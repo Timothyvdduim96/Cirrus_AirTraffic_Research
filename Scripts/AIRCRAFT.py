@@ -22,7 +22,7 @@ from netCDF4 import Dataset
 from pyhdf.SD import SD, SDC
 import json
 
-path = "C:\\Users\\fafri\\Documents\\ads_cirrus_airtraffic\\"
+path = "E:\\Research_cirrus\\"
 '''
 ---------------------------PLOTTING PREFERENCES--------------------------------
 '''
@@ -45,7 +45,7 @@ plt.rc('figure', figsize = (12, 5))
 '''
 
 # import flights
-flights_0315 = pd.read_csv(path + "Flight_data\\flights0515.csv", sep=";")
+flights_0315 = pd.read_csv(path + "Flight_data\\Flights_20150301_20150331.csv", sep=";")
 
 # rename columns
 flights_0315.columns = ["ID", "ICAO_dep", "lat_dep", "lon_dep", "ICAO_dest", "lat_dest", "lon_dest",

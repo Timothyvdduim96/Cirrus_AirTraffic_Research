@@ -64,7 +64,7 @@ def api_req():
                 '250', '300', '350',
                 '400',
             ],
-            'year': '2015',
+            'year': '2017',
             'month': [
                 '03', '06', '09',
                 '12',
@@ -97,7 +97,7 @@ def api_req():
                 40,
             ],
         },
-        'ERA5_15.nc')
+        'ERA5_17.nc')
 
 api_req()
 
@@ -130,7 +130,7 @@ dirlist = ['https://xfr139.larc.nasa.gov/322beb85-0949-4679-ae8b-2a7d310a634a/',
            'https://xfr139.larc.nasa.gov/9c05d26a-f939-47a7-b4c6-e12dc7e76889/',
            'https://xfr139.larc.nasa.gov/e18bf041-018a-4fa9-b828-97769a8e00f5/',
            'https://xfr139.larc.nasa.gov/158a34b3-4269-4099-b5be-f5363b25f9ae/'] 
-# 03/15 (DONE), 06/15 (DONE), 09/15, 12/15, 03/16, 06/16, 09/16, 12/16, 03/17, 06/17,
+# 03/15 (DONE), 06/15 (DONE), 09/15 (DONE), 12/15, 03/16, 06/16, 09/16, 12/16, 03/17, 06/17,
 # 09/17, 12/17, 03/18, 06/18, 09/18, 12/18, 03/19, 06/19, 09/19, 12/19, 03/20,
 # 06/20, 09/20, 12/20
 
@@ -142,7 +142,7 @@ def url_list(url):
         urls.append(link)
     return urls
 
-directory = dirlist[2]
+directory = dirlist[3]
 
 urls = url_list(directory)
 

@@ -94,7 +94,7 @@ class hdf4_files:
 -----------------------------PROCESS ERA5 DATA---------------------------------
 '''
 
-path = "C:\\Users\\fafri\\Documents\\ads_cirrus_airtraffic\\ERA5_data"
+path = "E:\\Research_cirrus\\ERA5_data"
 
 def netcdf_import(file, *args):
     data = Dataset(file,'r')
@@ -113,43 +113,43 @@ def netcdf_import(file, *args):
 
 ERA5dict = netcdf_import(path + '\\ERA5_15.nc', 250)
 
-def animate(dataset_dict, var):
-    fig = plt.figure(figsize=(16,12))
-    ax = plt.subplot(111)
-    plt.rcParams.update({'font.size': 15})#-- create map
-    map = Basemap(projection='cyl',llcrnrlat= 35.,urcrnrlat= 60.,\
-                  resolution='l',  llcrnrlon=-10.,urcrnrlon=40.)
-    #-- draw coastlines and country boundaries, edge of map
-    map.drawcoastlines()
-    map.drawcountries()
-    map.bluemarble()
-    
-    #-- create and draw meridians and parallels grid lines
-    map.drawparallels(np.arange( -90., 90.,30.),labels=[1,0,0,0],fontsize=10)
-    map.drawmeridians(np.arange(-180.,180.,30.),labels=[0,0,0,1],fontsize=10)
-    
-    lons, lats = map(*np.meshgrid(dataset_dict['longitude'], dataset_dict['latitude']))
-    
-    # contourf 
-    im = map.contourf(lons, lats, dataset_dict[var][0], np.arange(0, 100.1, 0.1), extend='both', cmap='jet')
-    cbar=plt.colorbar(im)
+#def animate(dataset_dict, var):
+fig = plt.figure(figsize=(16,12))
+ax = plt.subplot(111)
+plt.rcParams.update({'font.size': 15})#-- create map
+map = Basemap(projection='cyl',llcrnrlat= 35.,urcrnrlat= 60.,\
+              resolution='l',  llcrnrlon=-10.,urcrnrlon=40.)
+#-- draw coastlines and country boundaries, edge of map
+map.drawcoastlines()
+map.drawcountries()
+map.bluemarble()
+
+#-- create and draw meridians and parallels grid lines
+map.drawparallels(np.arange( -90., 90.,30.),labels=[1,0,0,0],fontsize=10)
+map.drawmeridians(np.arange(-180.,180.,30.),labels=[0,0,0,1],fontsize=10)
+
+lons, lats = map(*np.meshgrid(ERA5dict['longitude'], ERA5dict['latitude']))
+
+# contourf 
+im = map.contourf(lons, lats, ERA5dict['r'][0], np.arange(0, 100.1, 0.1), extend='both', cmap='jet')
+cbar=plt.colorbar(im)
+date = '01-03-2015 00:00:00'
+time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S')
+title = ax.text(0.5,1.05,time,
+                    ha="center", transform=ax.transAxes,)
+
+def animate(i):
+    global im, title
+    for c in im.collections:
+        c.remove()
+    title.remove()
+    im = map.contourf(lons, lats, ERA5dict['r'][i], np.arange(0, 100.1, 0.1), extend='both', cmap='jet')
     date = '01-03-2015 00:00:00'
-    time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S')
-    title = ax.text(0.5,1.05,time,
-                        ha="center", transform=ax.transAxes,)
-     
-    def animate(i):
-        global im, title
-        for c in im.collections:
-            c.remove()
-        title.remove()
-        im = map.contourf(lons, lats, dataset_dict[var][i], np.arange(0, 100.1, 0.1), extend='both', cmap='jet')
-        date = '01-03-2015 00:00:00'
-        time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S') + timedelta(hours = i)
-        title = ax.text(0.5,1.05,"RH from ERA5 Reanalysis Data\n{0}".format(time),
-                        ha="center", transform=ax.transAxes,)
-        
-    myAnimation = animation.FuncAnimation(fig, animate, frames = 72)
+    time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S') + timedelta(hours = i)
+    title = ax.text(0.5,1.05,"RH from ERA5 Reanalysis Data\n{0}".format(time),
+                    ha="center", transform=ax.transAxes,)
+    
+myAnimation = animation.FuncAnimation(fig, animate, frames = len(ERA5dict['time']))
 
 #%%
 
@@ -164,9 +164,9 @@ max_lon = 40 # research area max longitude
 min_lat = 35 # research area min latitude
 max_lat = 60 # research area max latitude
 
-path = 'C:\\Users\\fafri\\Documents\\ads_cirrus_airtraffic\\Meteosat_CLAAS_data'
+path = 'E:\\Research_cirrus\\Meteosat_CLAAS_data\\'
 
-file = '{0}\\CM_SAF_CLAAS2_L2_AUX.nc'.format(path)
+file = '{0}CM_SAF_CLAAS2_L2_AUX.nc'.format(path)
 auxfile = Dataset(file,'r')
 
 def L2_to_L3(var, res_lon, res_lat, stat):
@@ -187,7 +187,7 @@ for filename in os.listdir(path):
     #file = 'C:\\Users\\fafri\\Documents\\Python Scripts\\ORD42131\\{0}.nc'.format(name_iter)
     if filename.endswith("UD.nc"):
         print(filename)
-        L2_data = Dataset(path + "\\" + str(filename),'r')
+        L2_data = Dataset(path + str(filename),'r')
         
         # extract variables of interest
         ct = L2_data['ct'][:]
