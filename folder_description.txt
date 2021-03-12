@@ -1,8 +1,9 @@
 The data included in this Github repository is due to storage space limitations not complete.
 Nonetheless each data source is represented at the least by some subset of the data used.
 
-- The "Flight_data" folder contains interpolated air traffic data for the first days of March 2015, retrieved from EUROCONTROL's OpenSky network. All original
-files are too large to include in this repository for now.
+- The "Flight_data" folder contains interpolated air traffic data for the first days of March 2015, retrieved from EUROCONTROL's OpenSky network.
+Also it contains a engine emissions dataset retrieved from the EASA (https://www.easa.europa.eu/domains/environment/icao-aircraft-engine-emissions-databank).
+All original files are too large to include in this repository for now.
 - The "Meteosat_CLAAS_data" contains granules in 15 min intervals of 11/03/2015.
 - The "ERA5_data" folder used to contain a .nc file for March, June, September and December 2016 of ECMWF ERA5 reanalysis product on pressure levels
 (100hPa - 400hPa in steps of 50hPa). It contains the products "relative humidity" and "temperature" on a 0.25x0.25deg grid for the subsetted ROI.

@@ -20,16 +20,7 @@ from datetime import date, timedelta, datetime
 import matplotlib.animation as animation
 from netCDF4 import Dataset
 from pyhdf.SD import SD, SDC
-import json
-from requests import Session
-import sys
-import urllib
-import fnmatch
-import lxml.html
-import wget
-import keyring
 from scipy import stats
-import cdsapi
 
 '''
 ---------------------------PLOTTING PREFERENCES--------------------------------

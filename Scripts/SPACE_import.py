@@ -64,10 +64,9 @@ def api_req():
                 '250', '300', '350',
                 '400',
             ],
-            'year': '2017',
+            'year': '2015',
             'month': [
-                '03', '06', '09',
-                '12',
+                '02',
             ],
             'day': [
                 '01', '02', '03',
@@ -97,7 +96,7 @@ def api_req():
                 40,
             ],
         },
-        'ERA5_17.nc')
+        'ERA5_jan15_train.nc')
 
 api_req()
 
@@ -142,7 +141,7 @@ def url_list(url):
         urls.append(link)
     return urls
 
-directory = dirlist[3]
+directory = "https://xfr139.larc.nasa.gov/eee3c186-2bc2-44ac-aa1a-2aced1e52887/"
 
 urls = url_list(directory)
 
@@ -153,6 +152,8 @@ for file in file_list:
     url = '{0}{1}'.format(directory, file)
     print(file)
     filename = wget.download(url)
+
+
 
 
 
