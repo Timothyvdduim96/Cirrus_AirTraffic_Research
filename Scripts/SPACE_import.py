@@ -64,9 +64,10 @@ def api_req():
                 '250', '300', '350',
                 '400',
             ],
-            'year': '2015',
+            'year': '2020',
             'month': [
-                '02',
+                '03', '06', '09',
+                '12',
             ],
             'day': [
                 '01', '02', '03',
@@ -96,7 +97,7 @@ def api_req():
                 40,
             ],
         },
-        'ERA5_jan15_train.nc')
+        'ERA5_20.nc')
 
 api_req()
 
@@ -133,15 +134,18 @@ dirlist = ['https://xfr139.larc.nasa.gov/322beb85-0949-4679-ae8b-2a7d310a634a/',
 # 09/17, 12/17, 03/18, 06/18, 09/18, 12/18, 03/19, 06/19, 09/19, 12/19, 03/20,
 # 06/20, 09/20, 12/20
 
+import time
+
 def url_list(url):
     urls = []
     connection = urllib.request.urlopen(url)
     dom =  lxml.html.fromstring(connection.read())
     for link in dom.xpath('//a/@href'):
         urls.append(link)
+        
     return urls
 
-directory = "https://xfr139.larc.nasa.gov/eee3c186-2bc2-44ac-aa1a-2aced1e52887/"
+directory = "https://xfr139.larc.nasa.gov/b47fa2f0-9d75-4d56-ad8d-c147cbbea3ce/"
 
 urls = url_list(directory)
 
@@ -149,12 +153,13 @@ filetype = "*.hdf"
 file_list = [filename for filename in fnmatch.filter(urls, filetype)]
 
 for file in file_list:
+    #time.sleep(30)
+    connection = urllib.request.urlopen(directory, timeout = 5)
+    while connection.getcode() != 200:
+        connection = urllib.request.urlopen(directory, timeout = 5)
     url = '{0}{1}'.format(directory, file)
     print(file)
     filename = wget.download(url)
-
-
-
 
 
 

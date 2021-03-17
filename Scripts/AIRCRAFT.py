@@ -172,34 +172,34 @@ flighttrack_0315['Time Over'] = pd.to_datetime(flighttrack_0315['Time Over'], fo
 -----------------------map movements between two dates-------------------------
 '''
 
-# start_date = '01-03-2015 12:00:00'
-# start_date = datetime.strptime(start_date, '%d-%m-%Y %H:%M:%S')
-# end_date = '01-03-2015 15:00:00'
-# end_date = datetime.strptime(end_date, '%d-%m-%Y %H:%M:%S')
+start_date = '01-03-2015 12:00:00'
+start_date = datetime.strptime(start_date, '%d-%m-%Y %H:%M:%S')
+end_date = '01-03-2015 15:00:00'
+end_date = datetime.strptime(end_date, '%d-%m-%Y %H:%M:%S')
 
-# filtered_flights = flighttrack_0315[flighttrack_0315['Time Over'].between(start_date, end_date)]
+filtered_flights = flighttrack_0315[flighttrack_0315['Time Over'].between(start_date, end_date)]
 
-# flight_IDs = flighttrack_0315["ECTRL ID"].unique()
+flight_IDs = flighttrack_0315["ECTRL ID"].unique()
 
-# fig = plt.figure(figsize=(16,12))
-# ax = plt.subplot(111)
-# plt.title("All registered flights (after filtering) on 3 March 2015 between 12PM and 3PM")
-# plt.rcParams.update({'font.size': 16})
-# map=Basemap(projection="lcc",resolution="i",width=5E6,height=2.5E6,
-#                              lon_0=15,lat_0=47.5,fix_aspect=False)
-# map.drawcoastlines()
-# map.drawcountries()
-# map.bluemarble()
+fig = plt.figure(figsize=(16,12))
+ax = plt.subplot(111)
+plt.title("All registered flights (after filtering) on 3 March 2015 between 12PM and 3PM")
+plt.rcParams.update({'font.size': 16})
+map=Basemap(projection="lcc",resolution="i",width=5E6,height=2.5E6,
+                              lon_0=15,lat_0=47.5,fix_aspect=False)
+map.drawcoastlines()
+map.drawcountries()
+map.bluemarble()
 
-# #create and draw meridians and parallels grid lines
-# map.drawparallels(np.arange( -90., 120.,10.),labels=[1,0,0,0],fontsize=10)
-# map.drawmeridians(np.arange(-180.,180.,10.),labels=[0,0,0,1],fontsize=10)
+#create and draw meridians and parallels grid lines
+map.drawparallels(np.arange( -90., 120.,10.),labels=[1,0,0,0],fontsize=10)
+map.drawmeridians(np.arange(-180.,180.,10.),labels=[0,0,0,1],fontsize=10)
 
-# for ID in filtered_flights["ECTRL ID"].unique():
-#     #convert latitude/longitude values to plot x/y values
-#     x, y = map(np.array(filtered_flights[filtered_flights['ECTRL ID'] == ID]['Longitude']),
-#              np.array(filtered_flights[filtered_flights['ECTRL ID'] == ID]['Latitude']))
-#     map.plot(x, y, linewidth=0.5, alpha = 0.3)
+for ID in filtered_flights["ECTRL ID"].unique():
+    #convert latitude/longitude values to plot x/y values
+    x, y = map(np.array(filtered_flights[filtered_flights['ECTRL ID'] == ID]['Longitude']),
+              np.array(filtered_flights[filtered_flights['ECTRL ID'] == ID]['Latitude']))
+    map.plot(x, y, linewidth=0.5, alpha = 0.3)
 
 #%%
 '''
@@ -241,42 +241,42 @@ flights = flight_0315_interp.merge(flights_0315, how = "inner", on = ["ID"])
 #Writer = animation.writers['ffmpeg']
 #writer = Writer(fps=10, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
 
-# fig = plt.figure(figsize=(16,12))
-# ax = plt.subplot(111)
-# plt.rcParams.update({'font.size': 16})
-# map=Basemap(projection="lcc",resolution="i",width=4E6,height=4E6,
-#                              lon_0=9.9167,lat_0=51.5167,fix_aspect=False)
-# map.drawcountries(color="black", linewidth=1)
-# map.shadedrelief()
+fig = plt.figure(figsize=(16,12))
+ax = plt.subplot(111)
+plt.rcParams.update({'font.size': 16})
+map=Basemap(projection="lcc",resolution="i",width=4E6,height=4E6,
+                              lon_0=9.9167,lat_0=51.5167,fix_aspect=False)
+map.drawcountries(color="black", linewidth=1)
+map.shadedrelief()
 
-# #create and draw meridians and parallels grid lines
-# map.drawparallels(np.arange( -90., 120.,30.),labels=[1,0,0,0],fontsize=10)
-# map.drawmeridians(np.arange(-180.,180.,30.),labels=[0,0,0,1],fontsize=10)
+#create and draw meridians and parallels grid lines
+map.drawparallels(np.arange( -90., 120.,30.),labels=[1,0,0,0],fontsize=10)
+map.drawmeridians(np.arange(-180.,180.,30.),labels=[0,0,0,1],fontsize=10)
 
-# nr_hours = 3
+nr_hours = 3
 
-# x, y = map(0, 0)
-# point = map.plot(x, y, 'ro', markersize = 3, color = 'red')[0]
+x, y = map(0, 0)
+point = map.plot(x, y, 'ro', markersize = 3, color = 'red')[0]
 
-# colors = {'Traditional Scheduled':'blue', 'All-Cargo':'orange', 'Lowcost':'green',
-#           'Charter':'red', 'Business Aviation':'purple'}
+colors = {'Traditional Scheduled':'blue', 'All-Cargo':'orange', 'Lowcost':'green',
+          'Charter':'red', 'Business Aviation':'purple'}
 
-# text = plt.text(0.5, 1.05, str(start_date), ha="center", transform=ax.transAxes,)
+text = plt.text(0.5, 1.05, str(start_date), ha="center", transform=ax.transAxes,)
 
-# def animate(i):
-#     #for hr in range(nr_hours):
-#     global text
-#     text.remove()
-#     start_date = '01-03-2015 00:00:00'
-#     start_date = datetime.strptime(start_date, '%d-%m-%Y %H:%M:%S') + timedelta(minutes = 5 * i)
-#     end_date = start_date + timedelta(minutes = 5)
-#     filtered_flights = flights[flights['Time Over'].between(start_date, end_date)]
-#     x, y = map(np.array(filtered_flights['Longitude']), np.array(filtered_flights['Latitude']))
-#     point.set_data(x, y)
-#     text = ax.text(0.5, 1.05, str(start_date), ha="center", transform=ax.transAxes,)
-#     return point,
+def animate(i):
+    #for hr in range(nr_hours):
+    global text
+    text.remove()
+    start_date = '01-03-2015 00:00:00'
+    start_date = datetime.strptime(start_date, '%d-%m-%Y %H:%M:%S') + timedelta(minutes = 5 * i)
+    end_date = start_date + timedelta(minutes = 5)
+    filtered_flights = flights[flights['Time Over'].between(start_date, end_date)]
+    x, y = map(np.array(filtered_flights['Longitude']), np.array(filtered_flights['Latitude']))
+    point.set_data(x, y)
+    text = ax.text(0.5, 1.05, str(start_date), ha="center", transform=ax.transAxes,)
+    return point,
 
-# myAnimation = animation.FuncAnimation(fig, animate, frames=300, interval=200)
+myAnimation = animation.FuncAnimation(fig, animate, frames=300, interval=200)
 #myAnimation.save('aircraft.mp4', writer=writer)
 
 #%%
