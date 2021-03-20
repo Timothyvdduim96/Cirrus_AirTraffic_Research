@@ -55,6 +55,14 @@ def L2_to_L3(var, dim1, dim2, res_lon, res_lat, stat):
     
     return lon_lat_grid.statistic
 
+def bin_pressureL(var):
+    bins_pressureL = stats.binned_statistic(var.flatten(),
+                                     np.arange(75, 475, 50), statistic = 'count',
+                                     bins = [int((425 - 75) / 50)],
+                                     range = [75, 425]) # pressure levels in upper troposphere include 100-400 in steps of 50hPa (see SPACE_import)
+    
+    return bins_pressureL.statistic
+
 #%%
 '''
 ----------------------------PROCESS CALIPSO DATA-------------------------------
@@ -128,16 +136,18 @@ def feature_class(var, start, end):
     return fclass
 
 def convert_seconds(n): 
-    return time.strftime('%H:%M:%S', time.gmtime(n))
+    timestr = time.strftime('%H:%M:%S', time.gmtime(n))
+    return datetime.strptime(timestr, '%H:%M:%S').time()
 
-for filename in os.listdir(path + 'LIDAR_03_15\\'):
-    print(path + 'LIDAR_03_15\\' + str(filename))
-    test_calipso = hdf4_files(path + 'LIDAR_03_15\\' + str(filename))
+for filename in os.listdir(path + 'LIDAR_02_15\\'):
+    print(path + 'LIDAR_02_15\\' + str(filename))
+    test_calipso = hdf4_files(path + 'LIDAR_02_15\\' + str(filename))
     
     class_flag = test_calipso.select_var("Feature_Classification_Flags")
     t = test_calipso.select_var("Profile_UTC_Time")
     lat = test_calipso.select_var("Latitude")
     lon = test_calipso.select_var("Longitude")
+    layer_top_pres = test_calipso.select_var("Layer_Top_Pressure")
     
     # feature_subcloud = {0: 'low overcast, transparent', 1: 'low overcast, opaque',
     #                 2: 'transition stratocumulus', 3: 'low, broken cumulus',
@@ -177,7 +187,12 @@ for filename in os.listdir(path + 'LIDAR_03_15\\'):
     
     feature_dict = pd.Series(features['cirrus'], index = features.index).to_dict() # convert feature flag and cirrus (1 or 0) to dictionary
     cirrus_flag = pd.DataFrame(class_flag).replace(feature_dict) # map this coding to classification flag array
-    cirrus_flag = cirrus_flag.apply(lambda x: max(x), axis = 1) # convert to 1D (remove multi-layered case for ease of analysis)
+    
+    cirrus_top_pres = np.where(cirrus_flag == 1, layer_top_pres, np.nan)
+    
+    press_layer_cirrus = np.apply_along_axis(bin_pressureL, 1, cirrus_top_pres) # bin cirrus top pressure into 7 layers
+    
+    #cirrus_flag = cirrus_flag.apply(lambda x: max(x), axis = 1) # convert to 1D (remove multi-layered case for ease of analysis)
     #cirrus_flag = cirrus_flag.astype(int)
     
     # format time
@@ -186,67 +201,78 @@ for filename in os.listdir(path + 'LIDAR_03_15\\'):
     t['date'] = pd.to_datetime(t['date'], format = '%y%m%d').dt.date
     t['time'] = t['time'].apply(lambda x: 24 * 3600 * eval('0.{0}'.format(x)))
     t['time'] = t['time'].apply(lambda x: convert_seconds(x))
+    combined_datetime = [datetime.combine(date, time) for date, time in zip(t['date'], t['time'])]
     
     # gather data and select relevant data (within ROI)
-    df_cirrus = pd.concat([t, pd.DataFrame(lon), pd.DataFrame(lat), cirrus_flag], axis = 1)
-    df_cirrus.columns = ['date', 'time', 'lon', 'lat', 'cirrus_cover']
+    df_cirrus = pd.concat([t, pd.DataFrame(lon), pd.DataFrame(lat)], axis = 1)
+    df_cirrus.columns = ['date', 'time', 'lon', 'lat']
     
-    df_cirrus = df_cirrus[(df_cirrus['lon'] >= min_lon) & (df_cirrus['lon'] <= max_lon)
-                          & (df_cirrus['lat'] >= min_lat) & (df_cirrus['lat'] <= max_lat)]
+    subset_area = np.array([(df_cirrus['lon'] >= min_lon) & (df_cirrus['lon'] <= max_lon)
+                          & (df_cirrus['lat'] >= min_lat) & (df_cirrus['lat'] <= max_lat)]).reshape(-1)
     
-    cirrus_gridded = L2_to_L3(np.array(df_cirrus['cirrus_cover']), np.array(df_cirrus['lon']),
-             np.array(df_cirrus['lat']), res_lon, res_lat, 'mean')
+    df_cirrus = df_cirrus[subset_area].reset_index(drop=True)
+    press_layer_cirrus = press_layer_cirrus[subset_area]
     
+    cirrus_gridded = []
+    
+    for col in press_layer_cirrus.T: # loop through pressure layers (columns)
+        cirrus_in_layer = pd.DataFrame(col, columns=['cirrus_cover']).reset_index(drop=True)
+        df_layer = pd.concat([df_cirrus, cirrus_in_layer], axis = 1)
+        cirrus_gridded.append(L2_to_L3(np.array(df_layer['cirrus_cover']), np.array(df_cirrus['lon']),
+                                  np.array(df_cirrus['lat']), res_lon, res_lat, 'mean'))
+    
+    binned_datetime = combined_datetime[-1] - timedelta(minutes = combined_datetime[-1].time().minute,
+                                                             seconds = combined_datetime[-1].time().second)
     cirrus_ani.append(cirrus_gridded)
-    dates.append(df_cirrus['date'].iloc[0])
-    times.append(df_cirrus['time'].iloc[int(len(df_cirrus) / 2)][:3] + str("00"))
-    #cirrus_cover = pd.concat([cirrus_cover, df_cirrus])
+    dates.append(binned_datetime.date())
+    times.append(binned_datetime.time())
 
-#%%
 cirrus_ani = np.stack(cirrus_ani)
 
-# Set up formatting for the movie files
-Writer = animation.writers['ffmpeg']
-writer = Writer(fps=2, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
+#%%
 
-#def animate(dataset_dict, var):
-fig = plt.figure(figsize=(16,12))
-ax = plt.subplot(111)
-plt.rcParams.update({'font.size': 15})#-- create map
-map = Basemap(projection='cyl',llcrnrlat= 35.,urcrnrlat= 60.,\
-              resolution='l',  llcrnrlon=-10.,urcrnrlon=40.)
-#-- draw coastlines and country boundaries, edge of map
-map.drawcoastlines()
-map.drawcountries()
-map.bluemarble()
+# # Set up formatting for the movie files
+# #Writer = animation.writers['ffmpeg']
+# #writer = Writer(fps=2, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
 
-#-- create and draw meridians and parallels grid lines
-map.drawparallels(np.arange( -90., 90.,10.),labels=[1,0,0,0],fontsize=10)
-map.drawmeridians(np.arange(-180.,180.,10.),labels=[0,0,0,1],fontsize=10)
+# #def animate(dataset_dict, var):
+# fig = plt.figure(figsize=(16,12))
+# ax = plt.subplot(111)
+# plt.rcParams.update({'font.size': 15})#-- create map
+# map = Basemap(projection='cyl',llcrnrlat= 35.,urcrnrlat= 60.,\
+#               resolution='l',  llcrnrlon=-10.,urcrnrlon=40.)
+# #-- draw coastlines and country boundaries, edge of map
+# map.drawcoastlines()
+# map.drawcountries()
+# map.bluemarble()
 
-lons, lats = map(*np.meshgrid(np.arange(-10, 40, 0.25), np.arange(35, 60, 0.25)))
+# #-- create and draw meridians and parallels grid lines
+# map.drawparallels(np.arange( -90., 90.,10.),labels=[1,0,0,0],fontsize=10)
+# map.drawmeridians(np.arange(-180.,180.,10.),labels=[0,0,0,1],fontsize=10)
 
-# contourf 
-im = map.contourf(lons, lats, cirrus_ani[0].T, np.arange(0, 1.01, 0.01), extend='neither', cmap='jet')
-cbar=plt.colorbar(im)
-#date = '01-03-2015 00:00:00'
-#time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S')
-title = ax.text(0.5,1.05,dates[0],
-                    ha="center", transform=ax.transAxes,)
+# lons, lats = map(*np.meshgrid(np.arange(-10, 40, 0.25), np.arange(35, 60, 0.25)))
 
-def animate(i):
-    global im, title
-    for c in im.collections:
-        c.remove()
-    title.remove()
-    im = map.contourf(lons, lats, cirrus_ani[i].T, np.arange(0, 1.01, 0.01), extend='neither', cmap='jet')
-    #date = '01-03-2015 00:00:00'
-    #time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S') + timedelta(hours = i)
-    title = ax.text(0.5,1.05,"Cirrus cover from CALIPSO\n{0} {1}".format(dates[i], times[i]),
-                    ha="center", transform=ax.transAxes,)
+# # contourf 
+# im = map.contourf(lons, lats, cirrus_ani[0].T, np.arange(0, 1.01, 0.01), extend='neither', cmap='jet')
+# cbar=plt.colorbar(im)
+# #date = '01-03-2015 00:00:00'
+# #time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S')
+# title = ax.text(0.5,1.05,dates[0],
+#                     ha="center", transform=ax.transAxes,)
+
+# def animate(i):
+#     global im, title
+#     for c in im.collections:
+#         c.remove()
+#     title.remove()
+#     im = map.contourf(lons, lats, cirrus_ani[i].T, np.arange(0, 1.01, 0.01), extend='neither', cmap='jet')
+#     #date = '01-03-2015 00:00:00'
+#     #time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S') + timedelta(hours = i)
+#     title = ax.text(0.5,1.05,"Cirrus cover from CALIPSO\n{0} {1}".format(dates[i], times[i]),
+#                     ha="center", transform=ax.transAxes,)
     
-myAnimation = animation.FuncAnimation(fig, animate, frames = len(cirrus_ani), interval = 1000)
-myAnimation.save('CALIPSO_0315.mp4', writer=writer)
+# myAnimation = animation.FuncAnimation(fig, animate, frames = len(cirrus_ani), interval = 1000)
+# #myAnimation.save('CALIPSO_0315.mp4', writer=writer)
 
 
 #%%
@@ -255,69 +281,69 @@ myAnimation.save('CALIPSO_0315.mp4', writer=writer)
 -----------------------------PROCESS ERA5 DATA---------------------------------
 '''
 
-path = "E:\\Research_cirrus\\ERA5_data"
+# path = "E:\\Research_cirrus\\ERA5_data"
 
-def netcdf_import(file, *args):
-    data = Dataset(file,'r')
-    print(data.variables)
-    try:
-        pres_level = args[0]
-    except:
-        pres_level = np.nan
-    print(data.variables.keys())
-    my_dict = {}
-    if 'level' in data.variables.keys():
-        try:
-            idx = np.where(data['level'][:] == pres_level)[0][0]
-        except:
-            print("Define a pressure level!")
-            return
-    for key in data.variables.keys():
-        if key == 'longitude' or key == 'latitude' or key == 'time' or key == 'level':
-            my_dict[key] = data[key][:]
-        else:
-            my_dict[key] = data[key][:, idx, :, :]
-    return my_dict
+# def netcdf_import(file, *args):
+#     data = Dataset(file,'r')
+#     print(data.variables)
+#     try:
+#         pres_level = args[0]
+#     except:
+#         pres_level = np.nan
+#     print(data.variables.keys())
+#     my_dict = {}
+#     if 'level' in data.variables.keys():
+#         try:
+#             idx = np.where(data['level'][:] == pres_level)[0][0]
+#         except:
+#             print("Define a pressure level!")
+#             return
+#     for key in data.variables.keys():
+#         if key == 'longitude' or key == 'latitude' or key == 'time' or key == 'level':
+#             my_dict[key] = data[key][:]
+#         else:
+#             my_dict[key] = data[key][:, idx, :, :]
+#     return my_dict
 
-ERA5dict = netcdf_import(path + '\\ERA5_15.nc', 250)
+# ERA5dict = netcdf_import(path + '\\ERA5_15.nc', 250)
 
-#def animate(dataset_dict, var):
-fig = plt.figure(figsize=(16,12))
-ax = plt.subplot(111)
-plt.rcParams.update({'font.size': 15})#-- create map
-map = Basemap(projection='cyl',llcrnrlat= 35.,urcrnrlat= 60.,\
-              resolution='l',  llcrnrlon=-10.,urcrnrlon=40.)
-#-- draw coastlines and country boundaries, edge of map
-map.drawcoastlines()
-map.drawcountries()
-map.bluemarble()
+# #def animate(dataset_dict, var):
+# fig = plt.figure(figsize=(16,12))
+# ax = plt.subplot(111)
+# plt.rcParams.update({'font.size': 15})#-- create map
+# map = Basemap(projection='cyl',llcrnrlat= 35.,urcrnrlat= 60.,\
+#               resolution='l',  llcrnrlon=-10.,urcrnrlon=40.)
+# #-- draw coastlines and country boundaries, edge of map
+# map.drawcoastlines()
+# map.drawcountries()
+# map.bluemarble()
 
-#-- create and draw meridians and parallels grid lines
-map.drawparallels(np.arange( -90., 90.,30.),labels=[1,0,0,0],fontsize=10)
-map.drawmeridians(np.arange(-180.,180.,30.),labels=[0,0,0,1],fontsize=10)
+# #-- create and draw meridians and parallels grid lines
+# map.drawparallels(np.arange( -90., 90.,30.),labels=[1,0,0,0],fontsize=10)
+# map.drawmeridians(np.arange(-180.,180.,30.),labels=[0,0,0,1],fontsize=10)
 
-lons, lats = map(*np.meshgrid(ERA5dict['longitude'], ERA5dict['latitude']))
+# lons, lats = map(*np.meshgrid(ERA5dict['longitude'], ERA5dict['latitude']))
 
-# contourf 
-im = map.contourf(lons, lats, ERA5dict['r'][0], np.arange(0, 100.1, 0.1), extend='both', cmap='jet')
-cbar=plt.colorbar(im)
-date = '01-03-2015 00:00:00'
-time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S')
-title = ax.text(0.5,1.05,time,
-                    ha="center", transform=ax.transAxes,)
+# # contourf 
+# im = map.contourf(lons, lats, ERA5dict['r'][0], np.arange(0, 100.1, 0.1), extend='both', cmap='jet')
+# cbar=plt.colorbar(im)
+# date = '01-03-2015 00:00:00'
+# time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S')
+# title = ax.text(0.5,1.05,time,
+#                     ha="center", transform=ax.transAxes,)
 
-def animate(i):
-    global im, title
-    for c in im.collections:
-        c.remove()
-    title.remove()
-    im = map.contourf(lons, lats, ERA5dict['r'][i], np.arange(0, 100.1, 0.1), extend='both', cmap='jet')
-    date = '01-03-2015 00:00:00'
-    time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S') + timedelta(hours = i)
-    title = ax.text(0.5,1.05,"RH from ERA5 Reanalysis Data\n{0}".format(time),
-                    ha="center", transform=ax.transAxes,)
+# def animate(i):
+#     global im, title
+#     for c in im.collections:
+#         c.remove()
+#     title.remove()
+#     im = map.contourf(lons, lats, ERA5dict['r'][i], np.arange(0, 100.1, 0.1), extend='both', cmap='jet')
+#     date = '01-03-2015 00:00:00'
+#     time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S') + timedelta(hours = i)
+#     title = ax.text(0.5,1.05,"RH from ERA5 Reanalysis Data\n{0}".format(time),
+#                     ha="center", transform=ax.transAxes,)
     
-myAnimation = animation.FuncAnimation(fig, animate, frames = len(ERA5dict['time']))
+# myAnimation = animation.FuncAnimation(fig, animate, frames = len(ERA5dict['time']))
 
 #%%
 
@@ -325,89 +351,89 @@ myAnimation = animation.FuncAnimation(fig, animate, frames = len(ERA5dict['time'
 -----------------------PROCESS METEOSAT CLAAS 2.1 DATA-------------------------
 '''
 
-path = 'E:\\Research_cirrus\\Meteosat_CLAAS_data\\'
+# path = 'E:\\Research_cirrus\\Meteosat_CLAAS_data\\'
 
-file = '{0}CM_SAF_CLAAS2_L2_AUX.nc'.format(path)
-auxfile = Dataset(file,'r')
+# file = '{0}CM_SAF_CLAAS2_L2_AUX.nc'.format(path)
+# auxfile = Dataset(file,'r')
 
-ct_sample = []
-#cot_sample = []
+# ct_sample = []
+# #cot_sample = []
 
-def nanmax(array):
-    return np.nanmax(array)
+# def nanmax(array):
+#     return np.nanmax(array)
 
-for filename in os.listdir(path):
-    #file = 'C:\\Users\\fafri\\Documents\\Python Scripts\\ORD42131\\{0}.nc'.format(name_iter)
-    if filename.endswith("UD.nc"):
-        print(filename)
-        L2_data = Dataset(path + str(filename),'r')
+# for filename in os.listdir(path):
+#     #file = 'C:\\Users\\fafri\\Documents\\Python Scripts\\ORD42131\\{0}.nc'.format(name_iter)
+#     if filename.endswith("UD.nc"):
+#         print(filename)
+#         L2_data = Dataset(path + str(filename),'r')
         
-        # extract variables of interest
-        ct = L2_data['ct'][:]
-        cot = L2_data['cot'][:]
+#         # extract variables of interest
+#         ct = L2_data['ct'][:]
+#         cot = L2_data['cot'][:]
         
-        # filter out cirrus clouds
-        ct_cirrus = np.where(ct == 7, 1, 0) # all cirrus occurrences 1, the rest 0
-        cot_cirrus = np.where(ct_cirrus == 1, cot, np.nan) # all non-cirrus pixels NaN
-        cot_cirrus = np.where((cot_cirrus == -1) | (cot_cirrus == np.nan), np.nan, cot_cirrus) # make all invalid data (-1) NaN
+#         # filter out cirrus clouds
+#         ct_cirrus = np.where(ct == 7, 1, 0) # all cirrus occurrences 1, the rest 0
+#         cot_cirrus = np.where(ct_cirrus == 1, cot, np.nan) # all non-cirrus pixels NaN
+#         cot_cirrus = np.where((cot_cirrus == -1) | (cot_cirrus == np.nan), np.nan, cot_cirrus) # make all invalid data (-1) NaN
         
-        # coordinates
-        lat = auxfile['lat'][:]
-        lon = auxfile['lon'][:]
+#         # coordinates
+#         lat = auxfile['lat'][:]
+#         lon = auxfile['lon'][:]
             
-        ct_sample.append(L2_to_L3(ct_cirrus[0], lon, lat, res_lon, res_lat, stat = 'mean'))
-        #cot_sample.append(L2_to_L3(cot_cirrus, res_lon, res_lat, stat = lambda x: nanmax(x)))
-        if filename == 'CPPin20150302000000305SVMSG01UD.nc':
-            break
+#         ct_sample.append(L2_to_L3(ct_cirrus[0], lon, lat, res_lon, res_lat, stat = 'mean'))
+#         #cot_sample.append(L2_to_L3(cot_cirrus, res_lon, res_lat, stat = lambda x: nanmax(x)))
+#         if filename == 'CPPin20150302000000305SVMSG01UD.nc':
+#             break
         
-ct_sample = np.stack(ct_sample)
-ct_sample = np.where(ct_sample == 0, np.nan, ct_sample)
-#cot_sample = np.stack(cot_sample)
+# ct_sample = np.stack(ct_sample)
+# ct_sample = np.where(ct_sample == 0, np.nan, ct_sample)
+# #cot_sample = np.stack(cot_sample)
 
-# Set up formatting for the movie files
-#Writer = animation.writers['ffmpeg']
-#writer = Writer(fps=2, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
+# # Set up formatting for the movie files
+# #Writer = animation.writers['ffmpeg']
+# #writer = Writer(fps=2, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
 
-fig = plt.figure(figsize=(16,12))
-ax = plt.subplot(111)
-plt.rcParams.update({'font.size': 15})#-- create map
-map = Basemap(projection='cyl',llcrnrlat= 35 + res_lat/2, urcrnrlat= 60 - res_lat/2,\
-              resolution='l',  llcrnrlon=-10 + res_lon/2, urcrnrlon=40 - res_lon/2)
-#-- draw coastlines and country boundaries, edge of map
-map.drawcoastlines()
-map.drawcountries()
-map.bluemarble()
+# fig = plt.figure(figsize=(16,12))
+# ax = plt.subplot(111)
+# plt.rcParams.update({'font.size': 15})#-- create map
+# map = Basemap(projection='cyl',llcrnrlat= 35 + res_lat/2, urcrnrlat= 60 - res_lat/2,\
+#               resolution='l',  llcrnrlon=-10 + res_lon/2, urcrnrlon=40 - res_lon/2)
+# #-- draw coastlines and country boundaries, edge of map
+# map.drawcoastlines()
+# map.drawcountries()
+# map.bluemarble()
 
-#-- create and draw meridians and parallels grid lines
-map.drawparallels(np.arange( -90., 90.,15.),labels=[1,0,0,0],fontsize=10)
-map.drawmeridians(np.arange(-180.,180.,15.),labels=[0,0,0,1],fontsize=10)
+# #-- create and draw meridians and parallels grid lines
+# map.drawparallels(np.arange( -90., 90.,15.),labels=[1,0,0,0],fontsize=10)
+# map.drawmeridians(np.arange(-180.,180.,15.),labels=[0,0,0,1],fontsize=10)
 
-lons, lats = map(*np.meshgrid(np.arange(min_lon + res_lon/2, max_lon, res_lon),
-                              np.arange(min_lat + res_lat/2, max_lat, res_lat)))
+# lons, lats = map(*np.meshgrid(np.arange(min_lon + res_lon/2, max_lon, res_lon),
+#                               np.arange(min_lat + res_lat/2, max_lat, res_lat)))
 
-# contourf 
-im = map.contourf(lons, lats, ct_sample[0].T, np.arange(0, 1.01, 0.01), 
-                  extend='neither', cmap='binary')
-cbar=plt.colorbar(im)
-date = '28-02-2015 00:00:00'
-time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S')
-title = ax.text(0.5,1.05,time,
-                    ha="center", transform=ax.transAxes,)
+# # contourf 
+# im = map.contourf(lons, lats, ct_sample[0].T, np.arange(0, 1.01, 0.01), 
+#                   extend='neither', cmap='binary')
+# cbar=plt.colorbar(im)
+# date = '28-02-2015 00:00:00'
+# time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S')
+# title = ax.text(0.5,1.05,time,
+#                     ha="center", transform=ax.transAxes,)
 
-def animate(i):
-    global im, title
-    for c in im.collections:
-        c.remove()
-    title.remove()
-    im = map.contourf(lons, lats, ct_sample[i].T, np.arange(0, 1.01, 0.01), 
-                      extend='neither', cmap='binary')
-    date = '01-03-2015 00:00:00'
-    time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S') + timedelta(minutes = i * 15)
-    title = ax.text(0.5,1.05,"Cloud cover from SEVIRI Meteosat CLAAS\n{0}".format(time),
-                    ha="center", transform=ax.transAxes,)
+# def animate(i):
+#     global im, title
+#     for c in im.collections:
+#         c.remove()
+#     title.remove()
+#     im = map.contourf(lons, lats, ct_sample[i].T, np.arange(0, 1.01, 0.01), 
+#                       extend='neither', cmap='binary')
+#     date = '01-03-2015 00:00:00'
+#     time = datetime.strptime(date, '%d-%m-%Y %H:%M:%S') + timedelta(minutes = i * 15)
+#     title = ax.text(0.5,1.05,"Cloud cover from SEVIRI Meteosat CLAAS\n{0}".format(time),
+#                     ha="center", transform=ax.transAxes,)
     
-myAnimation = animation.FuncAnimation(fig, animate, frames = len(ct_sample))
-#myAnimation.save('cirruscoverCLAAS.mp4', writer=writer)
+# myAnimation = animation.FuncAnimation(fig, animate, frames = len(ct_sample))
+# #myAnimation.save('cirruscoverCLAAS.mp4', writer=writer)
 
 
 

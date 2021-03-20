@@ -134,8 +134,6 @@ dirlist = ['https://xfr139.larc.nasa.gov/322beb85-0949-4679-ae8b-2a7d310a634a/',
 # 09/17, 12/17, 03/18, 06/18, 09/18, 12/18, 03/19, 06/19, 09/19, 12/19, 03/20,
 # 06/20, 09/20, 12/20
 
-import time
-
 def url_list(url):
     urls = []
     connection = urllib.request.urlopen(url)
@@ -145,7 +143,7 @@ def url_list(url):
         
     return urls
 
-directory = "https://xfr139.larc.nasa.gov/b47fa2f0-9d75-4d56-ad8d-c147cbbea3ce/"
+directory = "https://xfr139.larc.nasa.gov/1b089536-14ad-4800-84dd-c91ec3387e8c/"
 
 urls = url_list(directory)
 
@@ -154,9 +152,9 @@ file_list = [filename for filename in fnmatch.filter(urls, filetype)]
 
 for file in file_list:
     #time.sleep(30)
-    connection = urllib.request.urlopen(directory, timeout = 5)
+    connection = urllib.request.urlopen(directory)
     while connection.getcode() != 200:
-        connection = urllib.request.urlopen(directory, timeout = 5)
+        connection = urllib.request.urlopen(directory)
     url = '{0}{1}'.format(directory, file)
     print(file)
     filename = wget.download(url)

@@ -205,26 +205,23 @@ for ID in filtered_flights["ECTRL ID"].unique():
 '''
 --------------------INTERPOLATION TO 15 MIN INTERVALS--------------------------
 '''
-# def interpol(ID):
-#     data = flighttrack_0315[flighttrack_0315['ECTRL ID'] == ID][['Time Over', 'Flight Level', 'Longitude', 'Latitude']]
-#     interp = data.set_index('Time Over').resample('5min').mean().interpolate(method='linear')
-#     interp = interp.reset_index()
-#     interp['ID'] = [ID] * len(interp)
-#     return interp
+def interpol(ID):
+    data = flighttrack_0315[flighttrack_0315['ECTRL ID'] == ID][['Time Over', 'Flight Level', 'Longitude', 'Latitude']]
+    interp = data.set_index('Time Over').resample('5min').mean().interpolate(method='linear')
+    interp = interp.reset_index()
+    interp['ID'] = [ID] * len(interp)
+    return interp
 
-# cols = ['Time Over', 'Flight Level', 'Longitude', 'Latitude',  'ID']
-# flight_0315_interp = pd.DataFrame(columns=cols)
-# idx = 0
+cols = ['Time Over', 'Flight Level', 'Longitude', 'Latitude',  'ID']
+flight_0315_interp = pd.DataFrame(columns=cols)
 
-# for flight in flighttrack_0315['ECTRL ID'].unique():
-#     data = interpol(flight)
-#     flight_0315_interp = flight_0315_interp.append(data, ignore_index = True)
-#     idx += 1
-#     print(idx)
+for idx, flight in enumerate(flighttrack_0315['ECTRL ID'].unique()[288819+167105:]):
+    flight_0315_interp = flight_0315_interp.append(interpol(flight), ignore_index = True)
+    print(idx)
     
-# flight_0315_interp.to_pickle('interpolated_flightdata_0315.pkl')
+flight_0315_interp.to_pickle('interpolated_flightdata_0315_part_III.pkl')
 
-flight_0315_interp = pd.read_pickle(path + "Flight_data\\interpolated_flightdata_0315.pkl") #to load 123.pkl back to the dataframe df
+#flight_0315_interp = pd.read_pickle(path + "Flight_data\\interpolated_flightdata_0315.pkl") #to load 123.pkl back to the dataframe df
 
 #%%
 '''
@@ -351,7 +348,7 @@ lons, lats = bmap(*np.meshgrid(np.arange(min_lon + res_lon/2, max_lon, res_lon),
 
 # contourf 
 im = bmap.contourf(lons, lats, flights_WATD.T, np.arange(0, 15, 0.1), 
-                  extend='max', alpha = 0.7, cmap='jet')
+                  extend='max', cmap='jet')
 cbar = plt.colorbar(im)
 
 
@@ -397,7 +394,7 @@ AC_engine_data['engine_info'] = AC_engine_data['engine_type'].apply(lambda x: ge
 
 def remove_chars(row):
     try:
-        row = re.sub('[ ,.!@#$-]', '', row)
+        row = re.sub('[ ,.!@#$-/:&]', '', row)
     except:
         row = row
     return row
