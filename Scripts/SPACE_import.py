@@ -9,26 +9,12 @@ Created on Thu Mar  4 14:46:25 2021
 ------------------------------PACKAGES-----------------------------------------
 '''
 
-import pandas as pd 
 import matplotlib.pyplot as plt
-import seaborn as sns
 import os
 os.environ['PROJ_LIB'] = r"C:\Users\fafri\anaconda3\pkgs\proj4-6.1.1-hc2d0af5_1\Library\share"
-from mpl_toolkits.basemap import Basemap
-import numpy as np
-from datetime import date, timedelta, datetime
-import matplotlib.animation as animation
-from netCDF4 import Dataset
-from pyhdf.SD import SD, SDC
-import json
-from requests import Session
-import sys
 import urllib
 import fnmatch
 import lxml.html
-import wget
-import keyring
-from scipy import stats
 import cdsapi
 
 '''
@@ -64,10 +50,9 @@ def api_req():
                 '250', '300', '350',
                 '400',
             ],
-            'year': '2020',
+            'year': '2019',
             'month': [
-                '03', '06', '09',
-                '12',
+                '06',
             ],
             'day': [
                 '01', '02', '03',
@@ -97,7 +82,7 @@ def api_req():
                 40,
             ],
         },
-        'ERA5_20.nc')
+        'ERA5_06_19.nc')
 
 api_req()
 
@@ -106,33 +91,15 @@ api_req()
 ---------------------------EXTRACT CALIPSO DATA--------------------------------
 '''
 
-dirlist = ['https://xfr139.larc.nasa.gov/322beb85-0949-4679-ae8b-2a7d310a634a/',
-           'https://xfr139.larc.nasa.gov/bc9a75f7-09fc-4d6a-a9d0-67071c8e23b2/',
-           'https://xfr139.larc.nasa.gov/994fb799-eac2-4f83-9896-b9064885ce33/',
-           'https://xfr139.larc.nasa.gov/6cbabe4b-26ed-451a-9dc2-27222301018f/',
-           'https://xfr139.larc.nasa.gov/7a7fbb75-ad03-4f27-926b-1850b1726784/',
-           'https://xfr139.larc.nasa.gov/9ad82758-fd27-4f77-bba6-711b9ddf2204/',
-           'https://xfr139.larc.nasa.gov/f6d89b2c-4545-44be-8574-750ca8230098/',
-           'https://xfr139.larc.nasa.gov/f0970b13-28a9-4078-961d-152742f2db2d/',
-           'https://xfr139.larc.nasa.gov/b6f8ffd2-71e6-4e35-a0f8-052dd3d32bec/',
-           'https://xfr139.larc.nasa.gov/8cb264c9-e4c4-4bde-8791-c0e21b64032e/',
-           'https://xfr139.larc.nasa.gov/552f8d5a-36bb-4b3b-b0c8-039be64077b5/',
-           'https://xfr139.larc.nasa.gov/64ee3b12-98c4-4a11-bd49-6803bdddffc7/',
-           'https://xfr139.larc.nasa.gov/abc2079b-75f6-41ed-beb4-26e7439e9b4c/',
-           'https://xfr139.larc.nasa.gov/b5642a37-c7a2-4844-9567-10e1f7162523/',
-           'https://xfr139.larc.nasa.gov/81151960-0122-488d-8c59-5dfa82f1aafd/',
-           'https://xfr139.larc.nasa.gov/e18211c1-93fd-4c29-afa8-08dfcf14d48e/',
-           'https://xfr139.larc.nasa.gov/9fdc71b9-d311-424e-9107-9f341287e028/',
-           'https://xfr139.larc.nasa.gov/fb6c769d-060a-4e80-ab65-9d05b05092ea/',
-           'https://xfr139.larc.nasa.gov/f65b8006-bb26-43fb-9227-79bffee7ab56/',
-           'https://xfr139.larc.nasa.gov/9d867f62-c01d-4029-bd4e-ad8a710f3d18/',
-           'https://xfr139.larc.nasa.gov/4cbc7c75-310f-43b7-8f71-28690f31d050/',
-           'https://xfr139.larc.nasa.gov/9c05d26a-f939-47a7-b4c6-e12dc7e76889/',
-           'https://xfr139.larc.nasa.gov/e18bf041-018a-4fa9-b828-97769a8e00f5/',
-           'https://xfr139.larc.nasa.gov/158a34b3-4269-4099-b5be-f5363b25f9ae/'] 
-# 03/15 (DONE), 06/15 (DONE), 09/15 (DONE), 12/15, 03/16, 06/16, 09/16, 12/16, 03/17, 06/17,
-# 09/17, 12/17, 03/18, 06/18, 09/18, 12/18, 03/19, 06/19, 09/19, 12/19, 03/20,
-# 06/20, 09/20, 12/20
+dirlist = ["https://xfr139.larc.nasa.gov/f0c1d3dd-9071-4d87-82c4-73e845fbb6bb/",
+           "https://xfr139.larc.nasa.gov/7adf3193-3520-41d3-b87e-591212dacdc9/",
+           "https://xfr139.larc.nasa.gov/0773bd02-b303-44d5-bd7c-78aa64d25c65/",
+           "https://xfr139.larc.nasa.gov/feda055f-9da5-4fe6-8e09-de1fc780bbcc/",
+           "https://xfr139.larc.nasa.gov/4962dbbc-dcd4-457d-9174-3dac0e5b1a00/",
+           "https://xfr139.larc.nasa.gov/5ee8e267-9b2b-4e08-a07b-cad818ada998/",
+           "https://xfr139.larc.nasa.gov/ef570a9e-a0fb-4912-997b-c7bd920ee298/",
+           "https://xfr139.larc.nasa.gov/f08b2f52-6852-467a-a08a-743359320202/"]
+# 03/19, 06/19, 09/19, 12/19, 03/20, 06/20, 09/20, 12/20
 
 def url_list(url):
     urls = []
@@ -140,24 +107,28 @@ def url_list(url):
     dom =  lxml.html.fromstring(connection.read())
     for link in dom.xpath('//a/@href'):
         urls.append(link)
-        
     return urls
 
-directory = "https://xfr139.larc.nasa.gov/1b089536-14ad-4800-84dd-c91ec3387e8c/"
+for idx in range(len(dirlist)):
+    print(idx)
+    urls = url_list(dirlist[idx])
+    
+    filetype = "*.hdf"
+    file_list = [filename for filename in fnmatch.filter(urls, filetype)]
+    #files.append(file_list)
+        
+    with open('file_03_19_12_20.dat', 'a') as text_file:
+        for file in file_list:
+            name = '{0}{1}'.format(dirlist[idx], file)
+            text_file.write(name + '\n')
 
-urls = url_list(directory)
+#%%
+'''
+--------------------------------RUN IN CMD-------------------------------------
+'''
 
-filetype = "*.hdf"
-file_list = [filename for filename in fnmatch.filter(urls, filetype)]
+# wget --load-cookies C:\Users\fafri\.urs_cookies --save-cookies C:\Users\fafri\.urs_cookies --auth-no-challenge=on --keep-session-cookies --user=timomaster --ask-password --header "Authorization: Bearer c3bc08e7ead1b953f28ee12773dd6a9519f94457c801a1d4799f63af9efd2e90" --content-disposition -i C:\Users\fafri\file_03_19_12_20.dat -P C:\Users\fafri\
 
-for file in file_list:
-    #time.sleep(30)
-    connection = urllib.request.urlopen(directory)
-    while connection.getcode() != 200:
-        connection = urllib.request.urlopen(directory)
-    url = '{0}{1}'.format(directory, file)
-    print(file)
-    filename = wget.download(url)
 
 
 
