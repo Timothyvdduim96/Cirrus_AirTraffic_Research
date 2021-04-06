@@ -24,6 +24,9 @@ from scipy import stats
 from datetime import time
 import time
 import math as m
+import warnings
+
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 '''
 ---------------------------PLOTTING PREFERENCES--------------------------------
@@ -52,7 +55,7 @@ max_lat = 60 # research area max latitude
 '''
 ----------------------------PROCESS CALIPSO DATA-------------------------------
 '''
-path = "E:\\Research_cirrus\\CALIPSO_data\\"
+lidar_path = "E:\\Research_cirrus\\CALIPSO_data\\"
 
 class hdf4_files:
 
@@ -96,7 +99,7 @@ class hdf4_files:
             data = data
         return data
 
-class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15, False)
+class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(lidar_path + 'LIDAR_03_15', 15, False)
     
     def __init__(self, directory_name, time_res, pressure_axis): # pressure axis is a boolean!
         self.directory_name = directory_name
@@ -105,6 +108,9 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
         self.pressure_axis = pressure_axis
         # automatically run essential methods
         self.CALIPSO()
+        
+    def nanmean(self, arr):
+        return np.nanmean(arr)
         
     def L2_to_L3(self, var, dim1, dim2, res_lon, res_lat, stat):
         lon_lat_grid = stats.binned_statistic_2d(dim1.flatten(), dim2.flatten(),
@@ -116,9 +122,11 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
 
     def bin_pressureL(self, var):
         bins_pressureL = stats.binned_statistic(var.flatten(),
-                                     np.arange(75, 475, 50), statistic = 'count',
-                                     bins = [int((425 - 75) / 50)],
-                                     range = [75, 425]) # pressure levels in upper troposphere include 100-400 in steps of 50hPa (see SPACE_import)
+                                     np.array([87.5, 112.5, 137.5, 162.5, 187.5, 212.5,
+                                              237.5, 275, 325, 375, 425, 475]),
+                                     statistic = 'count',
+                                     bins = [11],
+                                     range = [87.5, 475]) # pressure levels in upper troposphere include 100-400 in steps of 50hPa (see SPACE_import)
     
         return bins_pressureL.statistic
         
@@ -161,6 +169,8 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
     def CALIPSO(self):
         
         self.CALIPSO_cirrus = []
+        self.CALIPSO_temp = []
+        self.CALIPSO_count = []
         self.dates = []
         self.times = []
         self.lon_pos = []
@@ -174,7 +184,8 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
             t = test_calipso.select_var("Profile_UTC_Time")
             lat = test_calipso.select_var("Latitude")
             lon = test_calipso.select_var("Longitude")
-            layer_top_pres = test_calipso.select_var("Layer_Top_Pressure")        
+            midlayer_pres = test_calipso.select_var("Midlayer_Pressure") 
+            midlayer_temp = test_calipso.select_var("Midlayer_Temperature") 
                     
             feature_type_data = self.feature_class(1, -3, None, class_flag)
             feature_QA_data = self.feature_class(2, -5, -3, class_flag)
@@ -213,9 +224,9 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
             t['time'] = t['time'].apply(lambda x: 24 * 3600 * eval('0.{0}'.format(x)))
             t['time'] = t['time'].apply(lambda x: self.convert_seconds(x))
             combined_datetime = [datetime.combine(date, time) for date, time in zip(t['date'], t['time'])]
-
+    
             combined_datetime = list(np.array(combined_datetime)[subset_area])
-
+    
             start_time_window = combined_datetime[0]
             end_time_window = start_time_window + timedelta(minutes = self.time_res)
             
@@ -224,24 +235,30 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
                 time_bool = pd.DataFrame(combined_datetime)[0].between(start_time_window, end_time_window)
                 cirrus_flag = pd.DataFrame(class_flag).replace(feature_dict) # map this coding to classification flag array
                 
-
+    
                 if self.pressure_axis == False:
-
+    
                     cirrus_flag = cirrus_flag.apply(lambda x: max(x), axis = 1) # convert to 1D (remove multi-layered case for ease of analysis)
                     df_cirrus = pd.concat([t, pd.DataFrame(lon), pd.DataFrame(lat), cirrus_flag], axis = 1)
                     df_cirrus.columns = ['date', 'time', 'lon', 'lat', 'cirrus_cover']
                     
                     df_cirrus = df_cirrus[subset_area].reset_index(drop=True)
                     df_cirrus['cirrus_cover'].at[~time_bool] = np.nan
-
+    
                     cirrus_gridded = self.L2_to_L3(np.array(df_cirrus['cirrus_cover']), np.array(df_cirrus['lon']),
                                               np.array(df_cirrus['lat']), res_lon, res_lat, 'mean')
+                    #cirrus_count = self.L2_to_L3(np.array(df_cirrus['cirrus_cover']), np.array(df_cirrus['lon']),
+                    #                          np.array(df_cirrus['lat']), res_lon, res_lat, 'count')
         
                     
                 elif self.pressure_axis == True:
-                    cirrus_top_pres = np.where(cirrus_flag == 1, layer_top_pres, np.nan)
-                    press_layer_cirrus = np.apply_along_axis(self.bin_pressureL, 1, cirrus_top_pres) # bin cirrus top pressure into 7 layers
-                    
+                    self.cirrus_midlayer_pres = np.where(cirrus_flag == 1, midlayer_pres, np.nan)
+                    self.press_layer_cirrus = np.apply_along_axis(self.bin_pressureL, 1, self.cirrus_midlayer_pres) # bin cirrus top pressure into 7 layers
+
+                    self.cirrus_midlayer_temp = np.where((cirrus_flag == 1) &
+                                                         (midlayer_pres >= 87.5) &
+                                                         (midlayer_pres <= 475), midlayer_temp, np.nan)
+
                     # gather data and select relevant data (within ROI)
                     df_cirrus = pd.concat([t, pd.DataFrame(lon), pd.DataFrame(lat)], axis = 1)
                     df_cirrus.columns = ['date', 'time', 'lon', 'lat']
@@ -250,16 +267,40 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
                                       & (df_cirrus['lat'] >= min_lat) & (df_cirrus['lat'] <= max_lat)]).reshape(-1)
                     
                     df_cirrus = df_cirrus[subset_area].reset_index(drop=True)
-                    press_layer_cirrus = press_layer_cirrus[subset_area]
+                    self.press_layer_cirrus = self.press_layer_cirrus[subset_area]
+                    self.cirrus_midlayer_temp = self.cirrus_midlayer_temp[subset_area]
+    
+                    self.indices = np.where(~self.press_layer_cirrus.any(axis=1))[0] # find idx of all rows with at least 1 non-zero element
+    
+                    self.cirrus_midlayer_temp[self.indices,:] = np.nan
+    
+                    temp = self.cirrus_midlayer_temp[~np.isnan(self.cirrus_midlayer_temp)]
+                    
+                    self.temp_layer = np.empty((len(self.press_layer_cirrus),11,))
+                    self.temp_layer.fill(np.nan)
+                    
+                    elements = np.nonzero(self.press_layer_cirrus)
+      
+                    for i, j, T in zip(elements[0], elements[1], temp):
+                        self.temp_layer[i,j] = T
+                        
                     
                     cirrus_gridded = []
+                    #temp_gridded = []
                 
-                    for col in press_layer_cirrus.T: # loop through pressure layers (columns)
+                    for col in self.press_layer_cirrus.T: # loop through pressure layers (columns)
                         cirrus_in_layer = pd.DataFrame(col, columns=['cirrus_cover']).reset_index(drop=True)
                         cirrus_in_layer['cirrus_cover'].at[~time_bool] = np.nan
                         df_layer = pd.concat([df_cirrus, cirrus_in_layer], axis = 1)
                         cirrus_gridded.append(self.L2_to_L3(np.array(df_layer['cirrus_cover']), np.array(df_cirrus['lon']),
                                                        np.array(df_cirrus['lat']), res_lon, res_lat, 'mean'))
+                        
+                    for col in self.temp_layer.T: # loop through pressure layers (columns)
+                        cirrus_in_layer = pd.DataFrame(col, columns=['temperature']).reset_index(drop=True)
+                        cirrus_in_layer['temperature'].at[~time_bool] = np.nan
+                        df_layer = pd.concat([df_cirrus, cirrus_in_layer], axis = 1)
+                        #temp_gridded.append(self.L2_to_L3(np.array(df_layer['temperature']), np.array(df_cirrus['lon']),
+                        #                               np.array(df_cirrus['lat']), res_lon, res_lat, self.nanmean))
                     
                     
                 else:
@@ -273,13 +314,16 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
                 binned_datetime = mid_time - timedelta(seconds = mid_time.time().second)
                 
                 self.CALIPSO_cirrus.append(cirrus_gridded)
+                #self.CALIPSO_temp.append(temp_gridded)
+                #self.CALIPSO_count.append(cirrus_count)
                 self.dates.append(binned_datetime.date())
                 self.times.append(binned_datetime.time())
                 
                 start_time_window = start_time_window + timedelta(minutes = self.time_res)
                 end_time_window = start_time_window + timedelta(minutes = self.time_res)
-        
+            
         self.CALIPSO_cirrus = np.stack(self.CALIPSO_cirrus)
+        #self.CALIPSO_temp = np.stack(self.CALIPSO_temp)
         
         return self.CALIPSO_cirrus
     
@@ -314,7 +358,8 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
         plt.figure(figsize = (10, 6))
         ax = plt.subplot(111, polar=True)
         
-        ax.bar(overpass_freq.index / 24 * 2 * m.pi, overpass_freq["nr of CALIPSO overpasses during March '15"], 
+        ax.bar((overpass_freq.index / 24 + 1 / 48 ) * 2 * m.pi, 
+               overpass_freq["nr of CALIPSO overpasses during March '15"], 
                width = 0.2, alpha = 0.5, color = "#f39c12")
         
         ax.xaxis.set_tick_params(labelsize=16)
@@ -322,7 +367,7 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(path + 'LIDAR_03_15', 15,
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
         ax.set_xticks(np.arange(0, 2 * m.pi + 2 / 24 * m.pi, 2 / 24 * m.pi))
-        ax.set_yticks(np.arange(0, 40, 5))
+        ax.set_yticks(np.arange(0, 25, 5))
         ax.set_title("Overpass frequency of CALIPSO over Europe in {0}-{1}".format(self.directory_name[-5:-3], self.directory_name[-2:]))
         ticks = [f"{i}:00" for i in range(0, 24, 1)]
         ax.set_xticklabels(ticks)
