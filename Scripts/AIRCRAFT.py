@@ -22,6 +22,7 @@ import urllib
 from bs4 import BeautifulSoup
 import re
 from datetime import date, timedelta, datetime
+import sys
 #from SPACE_processing import hdf4_files, CALIPSO_analysis
 
 '''
@@ -68,7 +69,7 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         self.flighttracks()
         self.interpol_exe()
         self.merge_datasets()
-        #self.grid_ATD()
+        self.grid_ATD()
             
     def dist(self, arr1, arr2):
         return abs(arr1 - arr2)
@@ -277,7 +278,8 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
             self.selected_flightpoints = pd.DataFrame(columns = cols)
                         
             for idx, current_date in enumerate(self.combined_datetime):
-                time_open = current_date - timedelta(minutes = self.window)
+                time_open = current_date - timedelta(minutes = 30)
+                print(time_open)
                 self.filtered_flights = self.flighttrack[self.flighttrack['Time Over'].between(time_open, current_date)]
                 self.current_lon = long_pos[idx]
                 self.current_lat = lat_pos[idx]
@@ -285,6 +287,7 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
                     self.filtered_flights['Dist-2-Sat'] = self.filtered_flights[['Latitude', 'Longitude']].apply(lambda x: self.dist2sat(x, self.current_lon, self.current_lat), axis = 1)
                     self.selected_flightpoints = self.selected_flightpoints.append(self.filtered_flights[self.filtered_flights['Dist-2-Sat'] < radius],
                                                              ignore_index = True)
+
                 except:
                     pass
     
@@ -294,17 +297,20 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
             self.flight_interpol = pd.DataFrame(columns=cols)
             
             for idx, flight in enumerate(self.selected_flightpoints['ECTRL ID'].unique()):
-                    
+                print(idx)
                 self.flight_interpol = self.flight_interpol.append(self.interpol(flight), 
                                                                    ignore_index = True)
                 
             self.flight_interpol.to_pickle(self.savename)
         elif self.option == 'load':
+            self.combined_datetime = [datetime.combine(date, time) for date, time 
+                                 in zip(self.dates, self.times)]
             try:
                 self.flight_interpol = pd.read_pickle(path + 'Flight_data\\' + self.savename) #to load 123.pkl back to the dataframe df
-                self.flight_interpol.columns = ['Time Over', 'Flight Level', 'Longitude', 'Latitude', 'ECTRL ID']
+                print(self.flight_interpol)
+                self.flight_interpol.columns = ['ECTRL ID', 'Time Over', 'Flight Level', 'Longitude', 'Latitude', 'Dist-2-Sat']
             except:
-                print("File not found.")
+                sys.exit("File not found.")
         else:
             print("Option not recognized.")
             
@@ -316,7 +322,6 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         '''
         
         self.flights = self.flight_interpol.merge(self.flights, how = "inner", on = ["ECTRL ID"])
-        
         return self.flights
     
     def perform_animation(self, start_date, end_date, save): # start and end date in string format, save as boolean
@@ -437,24 +442,26 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         self.flights_ATD = []
         self.countflights = []
         
-        try:
-            for date_window in self.combined_datetime:
-                start_date = date_window - timedelta(minutes = self.window)
-                self.filtered_flights = self.flown_distance(start_date, self.window)          
-                self.flights_ATD.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'sum'))
-                self.countflights.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'count'))
-        
-        except:
-            start = datetime.strptime('2015-03-01 00:00', '%Y-%m-%d %H:%M')
-            end = datetime.strptime('2015-03-31 23:00', '%Y-%m-%d %H:%M')
+        #try:
+        for date_window in self.combined_datetime:
+            start_date = date_window - timedelta(minutes = 30)
+            print(str(start_date) + ', gridding')
+            self.filtered_flights = self.flown_distance(start_date, 30)          
+            self.flights_ATD.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'sum'))
+            self.countflights.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'count'))
+    
+        # except:
+        #     start = datetime.strptime('2015-03-01 00:00', '%Y-%m-%d %H:%M')
+        #     end = datetime.strptime('2015-03-31 23:00', '%Y-%m-%d %H:%M')
             
-            hour_list = pd.date_range(start = start, end = end, freq = 'H').to_pydatetime().tolist()
+        #     hour_list = pd.date_range(start = start, end = end, freq = 'H').to_pydatetime().tolist()
             
-            for start_date in hour_list:
-                print(start_date)
-                self.filtered_flights = self.flown_distance(start_date, 60)          
-                self.flights_ATD.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'sum'))
-                self.countflights.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'count'))
+        #     for start_date in hour_list:
+        #         print('in the wrong loop')
+        #         print(start_date)
+        #         self.filtered_flights = self.flown_distance(start_date, 30)          
+        #         self.flights_ATD.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'sum'))
+        #         self.countflights.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'count'))
                 
         self.flights_ATD = np.stack(self.flights_ATD)
         self.countflights = np.stack(self.countflights)
@@ -465,7 +472,7 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         
         fig = plt.figure(figsize=(16,12))
         ax = plt.subplot(111)
-        plt.title("Air Traffic Density (km/km$^2$ h) from {0} till {1}".format(self.combined_datetime[idx] - timedelta(minutes = self.window), 
+        plt.title("Air Traffic Density (km/km$^2$ h) from {0} till {1}".format(self.combined_datetime[idx] - timedelta(minutes = 30), 
                                                                                self.combined_datetime[idx]))
         plt.rcParams.update({'font.size': 16})
         bmap = Basemap(projection="lcc",resolution="i",width=5E6,height=3.5E6,

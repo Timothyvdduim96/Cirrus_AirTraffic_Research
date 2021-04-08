@@ -20,6 +20,7 @@ from datetime import datetime
 from scipy import stats
 import math as m
 from sklearn.linear_model import LinearRegression
+import statsmodels.api as sm
 
 def netcdf_import(file):
     data = Dataset(file,'r')
@@ -96,6 +97,8 @@ alltimes = []
 rel_hum_series = []
 temp_series = []
 
+atd_allinradius = []
+
 mode = 'load'
 
 
@@ -103,34 +106,38 @@ for month in months:
     print(month)
     
     if mode == 'save':
-        lidar = CALIPSO_analysis(lidar_path + 'LIDAR_' + month, 15, False)
+        #lidar = CALIPSO_analysis(lidar_path + 'LIDAR_' + month, 15, False)
         
-        savearray = {'calipso': lidar.CALIPSO_cirrus, 'dates': lidar.dates, 'times': lidar.times,
-                      'lon_pos': lidar.lon_pos, 'lat_pos': lidar.lat_pos}
+        #savearray = {'calipso': lidar.CALIPSO_cirrus, 'dates': lidar.dates, 'times': lidar.times,
+        #              'lon_pos': lidar.lon_pos, 'lat_pos': lidar.lat_pos}
         
-        calipso = lidar.CALIPSO_cirrus
+        #calipso = lidar.CALIPSO_cirrus
         
         #np.save('LIDAR_' + month, savearray, allow_pickle = True)
         
         # flatten arrays and remove nan instances
-        calipso_1d = np.reshape(calipso, -1)
-        calipso_time.append(calipso_1d[~(np.isnan(calipso_1d))])
-                
+        #calipso_1d = np.reshape(calipso, -1)
+        #calipso_time.append(calipso_1d[~(np.isnan(calipso_1d))])
+        
+        
         if eval(month[-2:]) < 19:
+            
+            calipso = np.load(lidar_path + 'LIDAR_processed\\LIDAR_' + month + '.npy', allow_pickle = True)
     
             flight = flight_analysis('Flights_20{0}{1}_20{0}{1}.csv'.format(month[-2:], month[:2]), 30,
-                                     'load', 'Flights_20{0}{1}_20{0}{1}.pkl'.format(month[-2:], month[:2]),
-                                         dates = calipso.dates, times = calipso.times, 
-                                         lon_pos = calipso.lon_pos, 
-                                         lat_pos = calipso.lat_pos)
+                                     'perform', savename = str(month),
+                                         dates = calipso.item()['dates'], times = calipso.item()['times'], 
+                                         lon_pos = calipso.item()['lon_pos'], 
+                                         lat_pos = calipso.item()['lat_pos'])
     
             atd = flight.flights_ATD
-            calipso_1d = np.reshape(calipso.calipso, -1)
-            atd_1d = np.reshape(atd, -1)
-            atd_1d = np.where(np.isnan(calipso_1d) == True, np.nan, atd_1d)
-            atd_1d = atd_1d[~(np.isnan(atd_1d))]
-            np.save('Flights_' + month, atd_1d, allow_pickle = True)
-            atd_time.append(atd_1d)
+            #calipso_1d = np.reshape(calipso.calipso, -1)
+            #atd_1d = np.reshape(atd, -1)
+            #atd_1d = np.where(np.isnan(calipso_1d) == True, np.nan, atd_1d)
+            #atd_1d = atd_1d[~(np.isnan(atd_1d))]
+            np.save('Flights_atd_allinradius_' + month, atd, allow_pickle = True)
+            #atd_time.append(atd_1d)
+            atd_allinradius.append(atd)
             
     elif mode == 'load':
             calipso = np.load(lidar_path + 'LIDAR_processed\\LIDAR_' + month + '.npy', allow_pickle = True)
@@ -262,7 +269,7 @@ statpd = pd.DataFrame(temp_rh_grid, index = list(map(str, stat.x_edge))[:-1],
 
 mean = lambda x: np.nanmean(x)
 
-mean_cover = list(map(mean, calipso_binned))
+mean_cover = list(map(mean, calipso_time))
 
 dates = [month.replace('_', '-') for month in months]
 years = ['2015', '2016', '2017', '2018', '2019', '2020']
@@ -357,16 +364,49 @@ for month in months:
                                          lat_pos = calipso.item()['lat_pos'])
             nr_flights.append(len(flight.flights))
 
+#atdmeans_nolev = atdmeans[0:13] + list([atdmeans[-1]])
+#nr_flights_nolev = nr_flights[0:13] + list([nr_flights[-1]])
+
 corr = round(np.corrcoef(nr_flights, atdmeans)[0,1]**2, 2)
 
 plt.figure()
-ax = sns.regplot(atdmeans, nr_flights)
-plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
-plt.xlabel('Air traffic density (km/(km$\cdot$hr))')
-plt.ylabel('Nr of monthly flights')
-ax.text(1, 1e6, '$r^2$ = ' + str(corr), fontsize = 20)
+ax = sns.regplot(nr_flights, atdmeans)
+plt.ticklabel_format(axis="x", style="sci", scilimits=(0,0))
+plt.xlabel('Nr of monthly flights')
+plt.ylabel('Air traffic density (km/(km$\cdot$hr))')
+ax.text(9e5, 0.9, '$r^2$ = ' + str(corr), fontsize = 20)
 for i, txt in enumerate(dates[:16]):
-    ax.annotate(txt, (atdmeans[i], nr_flights[i]), fontsize = 12)
+    ax.annotate(txt, (nr_flights[i], atdmeans[i]), fontsize = 12)
+plt.show()
+
+#%%
+'''
+-------------------------TIME SERIES FLIGHTS-----------------------------------
+'''
+list_of_months = ['Mar', 'Jun', 'Sep', 'Dec', 'Mean'] * (2018 - 2015 + 1)
+list_of_years = list(np.repeat(years, 5))
+mean_year_flights = np.reshape(nr_flights, (4, 4)).mean(axis = 1)
+
+# get percentage change air traffic
+AT_change = pd.DataFrame(mean_year_flights).pct_change() * 100
+
+nr_flights_ext = nr_flights[:]
+for idx, val in zip([4, 9, 14, 19], mean_year_flights):
+    nr_flights_ext.insert(idx, val)
+
+plot_flights = pd.DataFrame(list(zip(nr_flights_ext, list_of_months, list_of_years)),
+                            columns = ['Number of flights', 'Month', 'Year'])
+
+plt.figure(figsize=(10,10))
+ax = sns.lineplot(data = plot_flights, x = 'Year', y = 'Number of flights', 
+                  hue = 'Month', marker='o')
+plt.ticklabel_format(axis="y", style="sci", scilimits=(0,0))
+plt.legend(loc = 2)
+
+for i, txt in enumerate(AT_change[0][1:]):
+    txt = '+{0}%'.format(str(round(txt, 1)))
+    ax.annotate(txt, (plot_flights['Year'][(i + 1) * 5], mean_year_flights[i + 1] + 1e4), 
+                fontsize = 15, weight = 'bold')
 plt.show()
 
 #%%
@@ -376,8 +416,6 @@ plt.show()
 X = np.array(nr_flights).reshape(-1, 1)
 
 reg = LinearRegression().fit(X, atdmeans)
-
-reg.score(X, atdmeans)
 
 flights_1920 = []
 
@@ -409,12 +447,22 @@ pivot_cirrus = pd.pivot_table(atd_df, values="mean_atd",
 pivot_cirrus.index = ['Mar', 'Jun', 'Sep', 'Dec', 'All']
 
 plt.figure()
-ax = sns.heatmap(pivot_cirrus, cmap='seismic', robust=True, fmt='.2f', 
+ax = sns.heatmap(pivot_cirrus, cmap='plasma', robust=True, fmt='.2f', 
                   annot=True, linewidths=.5, annot_kws={'size':11}, 
                   cbar_kws={'shrink':.8, 'label':'Mean Air Traffic Density'})                       
     
 ax.set_yticklabels(ax.get_yticklabels(), rotation=0, fontsize=10)
 ax.set_xticklabels(ax.get_xticklabels(), rotation=0, fontsize=10)
+
+#%%
+'''
+-----------------CHECK LEVERAGE LINEAR REGRESSION MODEL------------------------
+'''
+
+lm = sm.OLS(atdmeans, X).fit()
+
+fig, ax = plt.subplots(figsize=(12,8))
+fig = sm.graphics.influence_plot(lm, ax= ax, criterion="cooks")
 
 #%%
 '''
