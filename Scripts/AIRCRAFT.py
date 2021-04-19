@@ -23,6 +23,7 @@ from bs4 import BeautifulSoup
 import re
 from datetime import date, timedelta, datetime
 import sys
+from miscellaneous import *
 #from SPACE_processing import hdf4_files, CALIPSO_analysis
 
 '''
@@ -41,148 +42,119 @@ plt.rc('figure', figsize = (12, 5))
 ---------------------------------PARAMS----------------------------------------
 '''
 
-path = "E:\\Research_cirrus\\"
-
 res_lon = 0.25 # set desired resolution in longitudinal direction in degs
 res_lat = 0.25 # set desired resolution in latitudinal direction in degs
 min_lon = -10 # research area min longitude
 max_lon = 40 # research area max longitude
 min_lat = 35 # research area min latitude
 max_lat = 60 # research area max latitude
+months_complete = ['03_15', '06_15', '09_15', '12_15', '03_16', '06_16', '09_16', '12_16',
+                   '03_17', '06_17', '09_17', '12_17', '03_18', '06_18', '09_18', '12_18',
+                   '03_19', '06_19', '09_19', '12_19', '03_20', '06_20', '09_20', '12_20']
+months_1518 = months_complete[:16] # months till 2018
+months_1920 = months_complete[16:] # months 2019 & 2020
+dates = [month.replace('_', '-') for month in months_complete]
+years = ['2015', '2016', '2017', '2018', '2019', '2020'] # years
+
+'''
+---------------------------------PATHS----------------------------------------
+'''
+
+flight_path = 'E:\\Research_cirrus\\Flight_data\\'
+add_data_path = 'E:\\Research_cirrus\\Additional_data\\'
 
 #%%
+'''
+----------------------------------MAIN-----------------------------------------
+'''
 
-class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_20150331.csv', 30, 'load', 'interpolated_flightdata_0315_part_I.pkl')
-                        # or testflight = flight_analysis('Flights_20150301_20150331.csv', 30, 'perform', 'firsttest.pkl', dates = test.dates, times = test.times, lon_pos = test.lon_pos, lat_pos = test.lat_pos)
-    def __init__(self, filename, window, option, savename, **calipso_input): # option can be 'perform' or 'load' (interpolated data), savename its filename
-        self.filename = filename
-        self.option = option
-        self.savename = savename
-        self.window = window
-        if calipso_input:
-            self.dates = calipso_input['dates']
-            self.times = calipso_input['times']
-            self.lon_pos = calipso_input['lon_pos']
-            self.lat_pos = calipso_input['lat_pos']
-        # automatically run essential methods
-        self.individual_flights()
-        self.flighttracks()
-        self.interpol_exe()
-        self.merge_datasets()
-        self.grid_ATD()
-            
-    def dist(self, arr1, arr2):
-        return abs(arr1 - arr2)
-    
-    def fl_to_km(self, fl):
-        ft = fl * 100
-        return ft * 3.048e-4
-    
-    def deg_to_km(self, deg):
-        conv = 2 * m.pi * 6.378e3 / 360
-        return deg * conv
-    
+class flight_analysis:
+                       
+    def __init__(self, month): # option can be 'save' or 'load' (interpolated data), savename its filename
+        self.month = month
+        
     def individual_flights(self):
-        '''
-        -------------------------------import and format------------------------------
-        '''
-        # import flights
+
+        # import flights and format
         try:
-            self.flights = pd.read_csv(path + "Flight_data\\" + self.filename, sep=";")
+            self.flights = pd.read_csv(flight_path + 'Flights_' + self.month + '.csv', sep=';')
             # rename columns
-            self.flights.columns = ["ECTRL ID", "ICAO_dep", "lat_dep", "lon_dep", "ICAO_dest", "lat_dest", "lon_dest",
-                                "planned_dep_time", "planned_arr_time", "dep_time", "arr_time", "AC_type",
-                                "AC_operator", "AC_regis", "flight_type", "market", "req_FL", "dist"]
+            self.flights.columns = ['ECTRL ID', 'ICAO_dep', 'lat_dep', 'lon_dep', 'ICAO_dest', 'lat_dest', 'lon_dest',
+                                'planned_dep_time', 'planned_arr_time', 'dep_time', 'arr_time', 'AC_type',
+                                'AC_operator', 'AC_regis', 'flight_type', 'market', 'req_FL', 'dist']
         except:
-            self.flights = pd.read_csv(path + "Flight_data\\" + self.filename, sep=",")
+            self.flights = pd.read_csv(flight_path + 'Flights_' + self.month + '.csv', sep=',')
             # rename columns
-            self.flights.columns = ["ECTRL ID", "ICAO_dep", "lat_dep", "lon_dep", "ICAO_dest", "lat_dest", "lon_dest",
-                                "planned_dep_time", "planned_arr_time", "dep_time", "arr_time", "AC_type",
-                                "AC_operator", "AC_regis", "flight_type", "market", "req_FL", "dist"]
+            self.flights.columns = ['ECTRL ID', 'ICAO_dep', 'lat_dep', 'lon_dep', 'ICAO_dest', 'lat_dest', 'lon_dest',
+                                'planned_dep_time', 'planned_arr_time', 'dep_time', 'arr_time', 'AC_type',
+                                'AC_operator', 'AC_regis', 'flight_type', 'market', 'req_FL', 'dist']
         
-        print("Original dataset consists of {0} flights.".format(len(self.flights)))
+        print('Original dataset consists of {0} flights.'.format(len(self.flights)))
         
         '''
-        -----------------------------------filtering-----------------------------------
+        -----------------------------------filtering---------------------------
         '''
         
         # invalid values
-        crucial_cols = ["ECTRL ID", "ICAO_dep", "lat_dep", "lon_dep", "ICAO_dest", "lat_dest", "lon_dest",
-                                "dep_time", "arr_time", "AC_type", "AC_operator", "flight_type"] # columns that should not contain NaN
+        crucial_cols = ['ECTRL ID', 'ICAO_dep', 'lat_dep', 'lon_dep', 'ICAO_dest', 'lat_dest', 'lon_dest',
+                                'dep_time', 'arr_time', 'AC_type', 'AC_operator', 'flight_type'] # columns that should not contain NaN
+        
         nan_flights = self.flights[self.flights[crucial_cols].isna().any(axis=1)]
         
-        print("Number of flights with important missing data is {0}.".format(len(nan_flights)))
+        print('Number of flights with important missing data is {0}.'.format(len(nan_flights)))
         
-        unknown_dep_airports = nan_flights[nan_flights["lat_dep"].isna()]["ICAO_dep"].unique()
-        unknown_dest_airports = nan_flights[nan_flights["lat_dest"].isna()]["ICAO_dest"].unique()
+        unknown_dep_airports = nan_flights[nan_flights['lat_dep'].isna()]['ICAO_dep'].unique()
+        unknown_dest_airports = nan_flights[nan_flights['lat_dest'].isna()]['ICAO_dest'].unique()
         unknown_airports = list(set(unknown_dep_airports) | set(unknown_dest_airports))
         
         # recover locations of known airports (ZZZZ and AFIL are not locatable!)
-        self.flights.loc[self.flights["ICAO_dep"] == "FAOR", "lat_dep"] = -26
-        self.flights.loc[self.flights["ICAO_dep"] == "FAOR", "lon_dep"] = 28
-        self.flights.loc[self.flights["ICAO_dest"] == "FAOR", "lat_dest"] = -26
-        self.flights.loc[self.flights["ICAO_dest"] == "FAOR", "lon_dest"] = 28
+        self.flights.loc[self.flights['ICAO_dep'] == 'FAOR', 'lat_dep'] = -26
+        self.flights.loc[self.flights['ICAO_dep'] == 'FAOR', 'lon_dep'] = 28
+        self.flights.loc[self.flights['ICAO_dest'] == 'FAOR', 'lat_dest'] = -26
+        self.flights.loc[self.flights['ICAO_dest'] == 'FAOR', 'lon_dest'] = 28
         
-        self.flights.loc[self.flights["ICAO_dep"] == "GQNN", "lat_dep"] = 18
-        self.flights.loc[self.flights["ICAO_dep"] == "GQNN", "lon_dep"] = -15
-        self.flights.loc[self.flights["ICAO_dest"] == "GQNN", "lat_dest"] = 18
-        self.flights.loc[self.flights["ICAO_dest"] == "GQNN", "lon_dest"] = -15
+        self.flights.loc[self.flights['ICAO_dep'] == 'GQNN', 'lat_dep'] = 18
+        self.flights.loc[self.flights['ICAO_dep'] == 'GQNN', 'lon_dep'] = -15
+        self.flights.loc[self.flights['ICAO_dest'] == 'GQNN', 'lat_dest'] = 18
+        self.flights.loc[self.flights['ICAO_dest'] == 'GQNN', 'lon_dest'] = -15
         
         nan_flights = self.flights[self.flights[crucial_cols].isna().any(axis=1)]
         
-        print("Number of flights with important missing data after recovering known airport locations is {0}.".format(len(nan_flights)))
+        print('Number of flights with important missing data after recovering known airport locations is {0}.'.format(len(nan_flights)))
         
         self.flights = self.flights[~self.flights[crucial_cols].isna().any(axis=1)]
         
-        print("Number of flights after filtering those rows is {0}.".format(len(self.flights)))
+        print('Number of flights after filtering those rows is {0}.'.format(len(self.flights)))
         
         # not so interesting columns that can be dropped
-        droplabels = ["lat_dep", "lon_dep", "lat_dest", "lon_dest", "planned_dep_time", "planned_arr_time",
-                      "dep_time", "arr_time", "req_FL"]
+        droplabels = ['lat_dep', 'lon_dep', 'lat_dest', 'lon_dest', 'planned_dep_time', 'planned_arr_time',
+                      'dep_time', 'arr_time', 'req_FL']
         
         self.flights = self.flights.drop(labels = droplabels, axis = 1)
         
-        return self.flights
-    
-    def airports(self):
-        airports = pd.read_csv(path + "Additional_data\\airports.csv", sep=",", encoding='latin-1')
+        # get airport names in dataframe based on ICAO codes
+        airports = pd.read_csv(add_data_path + 'airports.csv', sep=',', encoding='latin-1')
         
-        airports = airports[["airport", "ICAO"]]
+        airports = airports[['airport', 'ICAO']]
         
         # change colname to merge on departure airport
-        airports.columns = ["airport", "ICAO_dep"]
-        self.flights = self.flights.merge(airports, how = "inner", on = ["ICAO_dep"])
+        airports.columns = ['airport', 'ICAO_dep']
+        self.flights = self.flights.merge(airports, how = 'inner', on = ['ICAO_dep'])
         
         # change colname to merge on arrival airport
-        airports.columns = ["airport", "ICAO_dest"]
-        self.flights = self.flights.merge(airports, how = "inner", on = ["ICAO_dest"])
+        airports.columns = ['airport', 'ICAO_dest']
+        self.flights = self.flights.merge(airports, how = 'inner', on = ['ICAO_dest'])
         
-        self.flights.columns = ["ECTRL ID", "ICAO_dep", "ICAO_dest", "AC_type", "AC_operator",
-                                "AC_regis", "flight_type", "market", "dist", "dep_airport", "dest_airport"]
+        self.flights.columns = ['ECTRL ID', 'ICAO_dep', 'ICAO_dest', 'AC_type', 'AC_operator',
+                                'AC_regis', 'flight_type', 'market', 'dist', 'dep_airport', 'dest_airport']
         
-        airport_count = self.flights.groupby(by = "dep_airport")
-        airport_count = airport_count.size().rename("count")
-        airport_count = airport_count.sort_values(ascending = False)
-        
-        fig, ax = plt.subplots()
-        ax.tick_params(axis='y', labelsize = 10, rotation = 30)
-        ax.tick_params(axis='x', labelsize = 14, rotation = 0)
-        ax.set_title("Number of flights departing in March 2015")
-        ax.barh(airport_count.index[0:20], airport_count[0:20])
-        ax.set_xticks(np.arange(0, 22000, 2000))
-        ax.set_facecolor('darkgrey')
-    
         return self.flights
-    
-    '''
-    -------------------------------RADAR FLIGHTS-----------------------------------
-    '''
     
     def flighttracks(self):
         
-        self.flighttrack = pd.read_csv(path + "Flight_data\\Flight_Points_Actual_" + self.filename[-17:], sep=",")
+        self.flighttrack = pd.read_csv(flight_path + 'Flight_Points_Actual_' + self.month + '.csv', sep=',')
 
-        print("Original dataset consists of {0} flightpoints.".format(len(self.flighttrack)))
+        print('Original dataset consists of {0} flightpoints.'.format(len(self.flighttrack)))
         
         # check for NaN values
         nan_flightpoint = self.flighttrack[self.flighttrack.isna().any(axis=1)]
@@ -190,204 +162,110 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         # all NaN values are in cols Latitude & Longitude -> drop
         self.flighttrack = self.flighttrack.dropna(how = 'any')
         
-        print("Number of flight points after dropping NaN locations is {0}.".format(len(self.flighttrack)))
+        print('Number of flight points after dropping NaN locations is {0}.'.format(len(self.flighttrack)))
         
         # only keep points within ROI
-        self.flighttrack = self.flighttrack[(self.flighttrack["Latitude"] > min_lat) & 
-                                            (self.flighttrack["Latitude"] < max_lat) & 
-                                            (self.flighttrack["Longitude"] > min_lon) & 
-                                            (self.flighttrack["Longitude"] < max_lon)]
+        self.flighttrack = self.flighttrack[(self.flighttrack['Latitude'] > min_lat) & 
+                                            (self.flighttrack['Latitude'] < max_lat) & 
+                                            (self.flighttrack['Longitude'] > min_lon) & 
+                                            (self.flighttrack['Longitude'] < max_lon)]
         
-        print("Number of flight points after selecting ROI is {0}.".format(len(self.flighttrack)))
+        print('Number of flight points after selecting ROI is {0}.'.format(len(self.flighttrack)))
         
         # only keep data above 6 km (where cirrus can form)
-        self.flighttrack = self.flighttrack[self.flighttrack["Flight Level"] > 197]
+        self.flighttrack = self.flighttrack[self.flighttrack['Flight Level'] > 197]
         
-        print("Number of flight points after omitting points below 6 km is {0}.".format(len(self.flighttrack)))
+        print('Number of flight points after omitting points below 6 km is {0}.'.format(len(self.flighttrack)))
         
-        self.flighttrack['Time Over'] = pd.to_datetime(self.flighttrack['Time Over'], format="%d-%m-%Y %H:%M:%S")
+        self.flighttrack['Time Over'] = pd.to_datetime(self.flighttrack['Time Over'], format='%d-%m-%Y %H:%M:%S')
     
         return self.flighttrack
-    
-    def map_movements(self, start_date, end_date): # in string format, eg '05-03-2015 12:00:00'
-        '''
-        -----------------------map movements between two dates-------------------------
-        '''
-        
-        start_date = datetime.strptime(start_date, '%d-%m-%Y %H:%M:%S')
-        end_date = datetime.strptime(end_date, '%d-%m-%Y %H:%M:%S')
-        
-        filtered_flights = self.flighttrack[self.flighttrack['Time Over'].between(start_date, end_date)]
-        
-        flight_IDs = self.flighttrack["ECTRL ID"].unique()
-        
-        fig = plt.figure(figsize=(16,12))
-        ax = plt.subplot(111)
-        plt.title("All registered flights (after filtering) between {0} and {1}".format(start_date, end_date))
-        plt.rcParams.update({'font.size': 16})
-        map=Basemap(projection="lcc",resolution="i",width=5E6,height=2.5E6,
-                                      lon_0=15,lat_0=47.5,fix_aspect=False)
-        map.drawcoastlines()
-        map.drawcountries()
-        map.bluemarble()
-        
-        #create and draw meridians and parallels grid lines
-        map.drawparallels(np.arange( -90., 120.,10.),labels=[1,0,0,0],fontsize=10)
-        map.drawmeridians(np.arange(-180.,180.,10.),labels=[0,0,0,1],fontsize=10)
-        
-        for ID in filtered_flights["ECTRL ID"].unique():
-            #convert latitude/longitude values to plot x/y values
-            x, y = map(np.array(filtered_flights[filtered_flights['ECTRL ID'] == ID]['Longitude']),
-                      np.array(filtered_flights[filtered_flights['ECTRL ID'] == ID]['Latitude']))
-            map.plot(x, y, linewidth=0.5, alpha = 0.3)
-            
-    def dist2sat(self, df, current_lon, current_lat):
 
-        d_lon = self.deg_to_km(abs(df['Longitude'] - current_lon))
-        d_lat = self.deg_to_km(abs(df['Latitude'] - current_lat))
-        
-        return np.sqrt(d_lon**2 + d_lat**2)
-    
-    def interpol(self, ID):
-        '''
-        --------------------INTERPOLATION TO 5 MIN INTERVALS--------------------------
-        '''
+    def interpol(self, ID, resample_interval):
         
         data = self.selected_flightpoints[self.selected_flightpoints['ECTRL ID'] == ID][['Time Over', 'Flight Level', 'Longitude', 'Latitude']]
         data["Flight Level"] = pd.to_numeric(data["Flight Level"])
-        interp = data.set_index('Time Over').resample('1min').mean().interpolate(method = 'linear')
+        interp = data.set_index('Time Over').resample(resample_interval).mean().interpolate(method = 'linear')
         interp = interp.reset_index()
         interp['ECTRL ID'] = [ID] * len(interp)
         interp['Dist-2-Sat'] = self.selected_flightpoints['Dist-2-Sat']
         interp = interp[['ECTRL ID', 'Time Over', 'Flight Level', 'Longitude', 'Latitude', 'Dist-2-Sat']]
+        
         return interp
+
     
-    def interpol_exe(self): #dates, times, window, lon_pos, lat_pos
-
-        if self.option == 'perform':
-
-            self.combined_datetime = [datetime.combine(date, time) for date, time 
-                                 in zip(self.dates, self.times)]
+    def interpol_exe(self, resample_interval, window, V_aircraft, dates, times, lon_pos, lat_pos, savename):
+                    
+        
+        self.combined_datetime = [datetime.combine(date, time) for date, time 
+                             in zip(dates, times)]
+        
+        radius = window / 60 * V_aircraft # filter aircraft within certain radius defined by nr of hours times max expected flight speed in km/h
+        long_pos = [np.mean(sample) for sample in lon_pos]
+        lat_pos = [np.mean(sample) for sample in lat_pos]
+        
+        cols = np.concatenate([self.flighttrack.columns, ['Dist-2-Sat']])
+        
+        self.selected_flightpoints = pd.DataFrame(columns = cols)
+                    
+        for idx, current_date in enumerate(self.combined_datetime):
             
-            radius = self.window / 60 * 1200 + 100 # filter aircraft within certain radius defined by nr of hours times max expected flight speed in km/h (incl a margin)
-            long_pos = [np.mean(sample) for sample in self.lon_pos]
-            lat_pos = [np.mean(sample) for sample in self.lat_pos]
-            
-            cols = np.concatenate([self.flighttrack.columns, ['Dist-2-Sat']])
-            
-            self.selected_flightpoints = pd.DataFrame(columns = cols)
-                        
-            for idx, current_date in enumerate(self.combined_datetime):
-                time_open = current_date - timedelta(minutes = 30)
-                print(time_open)
-                self.filtered_flights = self.flighttrack[self.flighttrack['Time Over'].between(time_open, current_date)]
-                self.current_lon = long_pos[idx]
-                self.current_lat = lat_pos[idx]
-                try:
-                    self.filtered_flights['Dist-2-Sat'] = self.filtered_flights[['Latitude', 'Longitude']].apply(lambda x: self.dist2sat(x, self.current_lon, self.current_lat), axis = 1)
-                    self.selected_flightpoints = self.selected_flightpoints.append(self.filtered_flights[self.filtered_flights['Dist-2-Sat'] < radius],
-                                                             ignore_index = True)
+            time_open = current_date - timedelta(minutes = 30)
+            print(time_open)
+            self.filtered_flights = self.flighttrack[self.flighttrack['Time Over'].between(time_open, current_date)]
+            self.current_lon = long_pos[idx]
+            self.current_lat = lat_pos[idx]
 
-                except:
-                    pass
+            self.filtered_flights['Dist-2-Sat'] = self.filtered_flights[['Latitude', 'Longitude']].apply(lambda x: miscellaneous.dist2sat(x, self.current_lon, self.current_lat), axis = 1)
+            self.selected_flightpoints = self.selected_flightpoints.append(self.filtered_flights[self.filtered_flights['Dist-2-Sat'] < radius],
+                                                         ignore_index = True)
+
+        self.selected_flightpoints.drop_duplicates() # remove possible duplicates
+
+        cols = ['ECTRL ID', 'Time Over', 'Flight Level', 'Longitude', 'Latitude', 'Dist-2-Sat']
+        self.flight_interpol = pd.DataFrame(columns=cols)
+        
+        for idx, ID in enumerate(self.selected_flightpoints['ECTRL ID'].unique()):
+            print(str(idx) + ' out of ' + str(len(self.selected_flightpoints['ECTRL ID'].unique()))
+                  )
+            self.flight_interpol = self.flight_interpol.append(self.interpol(ID, resample_interval), 
+                                                               ignore_index = True)
+            
+        self.flight_interpol.to_pickle(savename)
     
-            self.selected_flightpoints.drop_duplicates() # remove possible duplicates
-
-            cols = ['ECTRL ID', 'Time Over', 'Flight Level', 'Longitude', 'Latitude', 'Dist-2-Sat']
-            self.flight_interpol = pd.DataFrame(columns=cols)
-            
-            for idx, flight in enumerate(self.selected_flightpoints['ECTRL ID'].unique()):
-                print(idx)
-                self.flight_interpol = self.flight_interpol.append(self.interpol(flight), 
-                                                                   ignore_index = True)
-                
-            self.flight_interpol.to_pickle(self.savename)
-        elif self.option == 'load':
-            self.combined_datetime = [datetime.combine(date, time) for date, time 
-                                 in zip(self.dates, self.times)]
-            try:
-                self.flight_interpol = pd.read_pickle(path + 'Flight_data\\' + self.savename) #to load 123.pkl back to the dataframe df
-                print(self.flight_interpol)
-                self.flight_interpol.columns = ['ECTRL ID', 'Time Over', 'Flight Level', 'Longitude', 'Latitude', 'Dist-2-Sat']
-            except:
-                sys.exit("File not found.")
-        else:
-            print("Option not recognized.")
-            
-        return self.flight_interpol
     
     def merge_datasets(self):
-        '''
-        -------------------------------MERGE DATASETS----------------------------------
-        '''
         
-        self.flights = self.flight_interpol.merge(self.flights, how = "inner", on = ["ECTRL ID"])
-        return self.flights
+        self.flights_merged = self.flight_interpol.merge(self.flights, how = "inner", on = ["ECTRL ID"])
+        
+        return self.flights_merged
     
-    def perform_animation(self, start_date, end_date, save): # start and end date in string format, save as boolean
-        '''
-        -------------------------------ANIMATE FLIGHTS--------------------------------
-        '''
+    def exe_ac(self, mode, resample_interval, window, V_aircraft, dates, times, lon_pos, lat_pos, savename, *add_name):
         
-        fig = plt.figure(figsize=(16,12))
-        ax = plt.subplot(111)
-        plt.rcParams.update({'font.size': 16})
-        map=Basemap(projection="lcc",resolution="i",width=4E6,height=4E6,
-                                      lon_0=9.9167,lat_0=51.5167,fix_aspect=False)
-        map.drawcountries(color="black", linewidth=1)
-        map.shadedrelief()
-        
-        #create and draw meridians and parallels grid lines
-        map.drawparallels(np.arange( -90., 120.,30.),labels=[1,0,0,0],fontsize=10)
-        map.drawmeridians(np.arange(-180.,180.,30.),labels=[0,0,0,1],fontsize=10)
-            
-        x, y = map(0, 0)
-        point = map.plot(x, y, 'ro', markersize = 3, color = 'red')[0]
-        
-        text = plt.text(0.5, 1.05, str(start_date), ha="center", transform=ax.transAxes,)
-        
-        flights = self.flights
-        def animate(i):
+        self.individual_flights()
+        self.flighttracks()
+        if mode == 'save':
+            self.interpol_exe(resample_interval, window, V_aircraft, dates, times, lon_pos, lat_pos, savename)
+        elif mode == 'load': 
+            if add_name:
+                self.flight_interpol = pd.read_pickle(flight_path + 'Flights_' + self.month + add_name[0] + '.pkl') #to load 123.pkl back to the dataframe df
+                self.flight_interpol = self.flight_interpol[['ID', 'Time Over', 'Flight Level', 'Longitude', 'Latitude']]
+                self.flight_interpol.columns = ['ECTRL ID', 'Time Over', 'Flight Level', 'Longitude', 'Latitude']
+            else:
+                self.flight_interpol = pd.read_pickle(flight_path + 'Flights_' + self.month + '.pkl') #to load 123.pkl back to the dataframe df
+                self.flight_interpol.columns = ['ECTRL ID', 'Time Over', 'Flight Level', 'Longitude', 'Latitude', 'Dist-2-Sat']
 
-            global text
-            text.remove()
-            start_date = '01-03-2015 00:00:00'
-            start_date = datetime.strptime(start_date, '%d-%m-%Y %H:%M:%S') + timedelta(minutes = 5 * i)
-            end_date = start_date + timedelta(minutes = 5)
-            filtered_flights = flights[flights['Time Over'].between(start_date, end_date)]
-            x, y = map(np.array(filtered_flights['Longitude']), np.array(filtered_flights['Latitude']))
-            point.set_data(x, y)
-            text = ax.text(0.5, 1.05, str(start_date), ha="center", transform=ax.transAxes,)
-            
-            return point,
+        self.merge_datasets()
         
-        myAnimation = animation.FuncAnimation(fig, animate, frames=300, interval=200)
-
-        if save == True:
-            # Set up formatting for the movie files
-            Writer = animation.writers['ffmpeg']
-            writer = Writer(fps=10, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
-            myAnimation.save('aircraft.mp4', writer=writer)
-    
     '''
     ---------------------------GRID AIR TRAFFIC (ATD)------------------------------
     '''
     
-    def bin_traffic(self, file, res_lon, res_lat, stat):
-        lon_lat_grid = stats.binned_statistic_2d(np.array(file['Longitude']).flatten(),
-                                                 np.array(file['Latitude']).flatten(),
-                                                 np.array(file['Flown distance']).flatten(),
-                                                 statistic = stat,
-                                                 bins = [int((max_lon - min_lon) / res_lon), int((max_lat - min_lat) / res_lat)],
-                                                 range = [[min_lon, max_lon], [min_lat, max_lat]])
-        
-        return lon_lat_grid.statistic
-    
     def flown_distance(self, start_date, dt): # start date as datetime obj, dt in minutes
     
         end_date = start_date + timedelta(minutes = dt)
-        
-        self.filtered_flights = self.flights[self.flights['Time Over'].between(start_date, end_date)]
+        print(self.flights_merged['Time Over'])
+        self.filtered_flights = self.flights_merged[self.flights_merged['Time Over'].between(start_date, end_date)]
         
         flight_IDs = self.filtered_flights['ECTRL ID'].unique()
 
@@ -395,14 +273,14 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         
         for flight in flight_IDs:
             datalocs = self.filtered_flights[self.filtered_flights['ECTRL ID'] == flight]
-            delta_lon = list(map(self.dist, datalocs['Longitude'], datalocs['Longitude'].shift()))
+            delta_lon = list(map(miscellaneous.dist, datalocs['Longitude'], datalocs['Longitude'].shift()))
             delta_lon = np.where(np.isnan(delta_lon), 0, delta_lon)
-            delta_lat = list(map(self.dist, datalocs['Latitude'], datalocs['Latitude'].shift()))
+            delta_lat = list(map(miscellaneous.dist, datalocs['Latitude'], datalocs['Latitude'].shift()))
             delta_lat = np.where(np.isnan(delta_lat), 0, delta_lat)
-            delta_h = list(map(self.dist, datalocs['Flight Level'], datalocs['Flight Level'].shift()))
+            delta_h = list(map(miscellaneous.dist, datalocs['Flight Level'], datalocs['Flight Level'].shift()))
             delta_h = np.where(np.isnan(delta_h), 0, delta_h)
-            d = np.sqrt(self.fl_to_km(delta_h)**2 + self.deg_to_km(delta_lon)**2 + self.deg_to_km(delta_lat)**2)
-            d = d / (self.deg_to_km(res_lon) * self.deg_to_km(res_lat)) / dt * 60 * 24 # convert to km/(km^2 h)
+            d = np.sqrt(miscellaneous.fl_to_km(delta_h)**2 + miscellaneous.deg_to_km(delta_lon)**2 + miscellaneous.deg_to_km(delta_lat)**2)
+            d = d / (miscellaneous.deg_to_km(res_lon) * miscellaneous.deg_to_km(res_lat)) / dt * 60 * 24 # convert to km/(km^2 h)
             self.air_dist.append(d)
         
         try:
@@ -413,85 +291,33 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         self.filtered_flights['Flown distance'] = self.air_dist
         
         return self.filtered_flights
-    
-    def time_gaps(self):
-        
-        self.timegaps = []
-        for idx, flight in enumerate(self.flighttrack['ECTRL ID'].unique()):
-            self.time_over = self.flighttrack[self.flighttrack['ECTRL ID'] == flight][['Time Over']]
-            timedist = list(map(self.dist, self.time_over['Time Over'][1:], self.time_over['Time Over'].shift()[1:]))
-            self.timegaps.append([timegap.seconds // 60 for timegap in timedist])
-            print(idx)
-            if idx == 5000:
-                self.timegaps = np.concatenate(self.timegaps)
-                fig, ax1 = plt.subplots(figsize=(8, 4))
-                ax1.hist(self.timegaps, bins = 60, color = "purple", alpha = 0.3)
-                ax1.set_xlabel("time gap in mins between two registered flight points")
-                ax1.set_ylabel("occurrence count")
-                ax1.grid(False)
-                ax2 = ax1.twinx()
-                ax2.hist(self.timegaps, bins = 60, density=True,
-                           cumulative=True, color = "#f39c12", alpha = 0.3)
-                ax2.set_ylabel("likelihood of $t_{gap} <= val$")
-                ax2.grid(False)
-                plt.show()
-                break
             
-    def grid_ATD(self):
+    def grid_ATD(self, timelist, time_window):
         
+        self.time_window = time_window
         self.flights_ATD = []
         self.countflights = []
         
-        #try:
-        for date_window in self.combined_datetime:
-            start_date = date_window - timedelta(minutes = 30)
+        for date_window in timelist:
+            
+            start_date = date_window - timedelta(minutes = self.time_window)
             print(str(start_date) + ', gridding')
-            self.filtered_flights = self.flown_distance(start_date, 30)          
-            self.flights_ATD.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'sum'))
-            self.countflights.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'count'))
-    
-        # except:
-        #     start = datetime.strptime('2015-03-01 00:00', '%Y-%m-%d %H:%M')
-        #     end = datetime.strptime('2015-03-31 23:00', '%Y-%m-%d %H:%M')
-            
-        #     hour_list = pd.date_range(start = start, end = end, freq = 'H').to_pydatetime().tolist()
-            
-        #     for start_date in hour_list:
-        #         print('in the wrong loop')
-        #         print(start_date)
-        #         self.filtered_flights = self.flown_distance(start_date, 30)          
-        #         self.flights_ATD.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'sum'))
-        #         self.countflights.append(self.bin_traffic(self.filtered_flights, res_lon, res_lat, stat = 'count'))
+            self.filtered_flights = self.flown_distance(start_date, self.time_window)          
+            self.flights_ATD.append(miscellaneous.bin_2d(self.filtered_flights['Longitude'],
+                                                        self.filtered_flights['Latitude'],
+                                                        self.filtered_flights['Flown distance'],
+                                                        min_lon, max_lon, min_lat, max_lat,
+                                                        res_lon, res_lat, stat = 'sum'))
+            self.countflights.append(miscellaneous.bin_2d(self.filtered_flights['Longitude'],
+                                                        self.filtered_flights['Latitude'],
+                                                        self.filtered_flights['Flown distance'],
+                                                        min_lon, max_lon, min_lat, max_lat,
+                                                        res_lon, res_lat, stat = 'count'))
                 
         self.flights_ATD = np.stack(self.flights_ATD)
         self.countflights = np.stack(self.countflights)
     
         return self.flights_ATD
-    
-    def plot_ATD(self, idx):
-        
-        fig = plt.figure(figsize=(16,12))
-        ax = plt.subplot(111)
-        plt.title("Air Traffic Density (km/km$^2$ h) from {0} till {1}".format(self.combined_datetime[idx] - timedelta(minutes = 30), 
-                                                                               self.combined_datetime[idx]))
-        plt.rcParams.update({'font.size': 16})
-        bmap = Basemap(projection="lcc",resolution="i",width=5E6,height=3.5E6,
-                                     lon_0=15,lat_0=47.5,fix_aspect=False)
-        bmap.drawcoastlines()
-        bmap.drawcountries()
-        bmap.bluemarble()
-        
-        #create and draw meridians and parallels grid lines
-        bmap.drawparallels(np.arange( -90., 120.,10.),labels=[1,0,0,0],fontsize=10)
-        bmap.drawmeridians(np.arange(-180.,180.,10.),labels=[0,0,0,1],fontsize=10)
-        
-        lons, lats = bmap(*np.meshgrid(np.arange(min_lon + res_lon/2, max_lon, res_lon),
-                                      np.arange(min_lat + res_lat/2, max_lat, res_lat)))
-        
-        # contourf 
-        im = bmap.contourf(lons, lats, self.flights_ATD[idx].T, np.arange(0, 15, 0.1), 
-                          extend='max', cmap='jet')
-        cbar = plt.colorbar(im)
     
     '''
     -------------------------WATD (not yet approved)-------------------------------
@@ -499,33 +325,28 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
     
     def get_engine_nr(self, row):
         try:
-            lhs, rhs = row.split("x ", 1) # retrieve nr of engines
+            lhs, rhs = row.split('x ', 1) # retrieve nr of engines
             lhs = lhs.split()[-1]
         except:
             lhs, rhs = '', ''
         return lhs, rhs
     
-    def remove_chars(self, row):
-        try:
-            row = re.sub('[ ,.!@#$-/:&]', '', row)
-        except:
-            row = row
-        return row
-    
     def AC_fuel_flow(self):
         
-        AC_types = self.flights['AC_type'].unique()
+        AC_types = self.flights_merged['AC_type'].unique()
         
         engine = []
         
         for AC_type in AC_types:
             # Constracting http query
             url = 'https://contentzone.eurocontrol.int/aircraftperformance/details.aspx?ICAO={0}&ICAOFilter={0}'.format(AC_type)
+            
             # For avoid 403-error using User-Agent
             req = urllib.request.Request(url)
             response = urllib.request.urlopen(req)
             html = response.read()
             soup = BeautifulSoup(html, 'html.parser')
+            
             # Extracting number of results
             engine.append(str(soup.find(id='MainContent_wsLabelPowerPlant').text))
         
@@ -544,7 +365,7 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         
         AC_engine_data['engine_info'] = AC_engine_data['engine_info'].apply(lambda x: self.remove_chars(x))
         
-        emissions = pd.read_csv(path + "Flight_data\\edb-emissions-databank.csv", encoding='latin-1')
+        emissions = pd.read_csv(path + 'Flight_data\\edb-emissions-databank.csv', encoding='latin-1')
         
         emissions['Engine Identification'] = emissions['Engine Identification'].apply(lambda x: self.remove_chars(x))
         #emissions['Engine Identification'] = emissions['Engine Identification'].replace(np.nan, '')
@@ -572,8 +393,146 @@ class flight_analysis: # e.g. testflight = flight_analysis('Flights_20150301_201
         self.AC_data['total ff'] = self.AC_data['nr engines'] * self.AC_data['fuel flow']
         
         return self.AC_data
+    
+    '''
+    ---------------------------------VISUALS-----------------------------------
+    '''
+    
+    def plot_airports(self):
+        
+        airport_count = self.flights.groupby(by = 'dep_airport')
+        airport_count = airport_count.size().rename('count')
+        airport_count = airport_count.sort_values(ascending = False)
+        
+        fig, ax = plt.subplots()
+        ax.tick_params(axis='y', labelsize = 10, rotation = 30)
+        ax.tick_params(axis='x', labelsize = 14, rotation = 0)
+        ax.set_title('Number of flights departing in March 2015')
+        ax.barh(airport_count.index[0:20], airport_count[0:20])
+        ax.set_xticks(np.arange(0, 22000, 2000))
+        ax.set_facecolor('darkgrey')
+        
+    def map_movements(self, start_date, end_date): # in string format, eg '05-03-2015 12:00:00'
+        
+        start_date = datetime.strptime(start_date, '%d-%m-%Y %H:%M:%S')
+        end_date = datetime.strptime(end_date, '%d-%m-%Y %H:%M:%S')
+        
+        filtered_flights = self.flighttrack[self.flighttrack['Time Over'].between(start_date, end_date)]
+        
+        flight_IDs = self.flighttrack['ECTRL ID'].unique()
+        
+        fig = plt.figure(figsize=(16,12))
+        ax = plt.subplot(111)
+        plt.title('All registered flights (after filtering) between {0} and {1}'.format(start_date, end_date))
+        plt.rcParams.update({'font.size': 16})
+        map=Basemap(projection='lcc',resolution='i',width=5E6,height=2.5E6,
+                                      lon_0=15,lat_0=47.5,fix_aspect=False)
+        map.drawcoastlines()
+        map.drawcountries()
+        map.bluemarble()
+        
+        #create and draw meridians and parallels grid lines
+        map.drawparallels(np.arange( -90., 120.,10.),labels=[1,0,0,0],fontsize=10)
+        map.drawmeridians(np.arange(-180.,180.,10.),labels=[0,0,0,1],fontsize=10)
+        
+        for ID in filtered_flights['ECTRL ID'].unique():
+            #convert latitude/longitude values to plot x/y values
+            x, y = map(np.array(filtered_flights[filtered_flights['ECTRL ID'] == ID]['Longitude']),
+                      np.array(filtered_flights[filtered_flights['ECTRL ID'] == ID]['Latitude']))
+            map.plot(x, y, linewidth=0.5, alpha = 0.3)
+        
+    def perform_animation(self, start_date, end_date, save): # start and end date in string format, save as boolean
+        
+        fig = plt.figure(figsize=(16,12))
+        ax = plt.subplot(111)
+        plt.rcParams.update({'font.size': 16})
+        map=Basemap(projection='lcc',resolution='i',width=4E6,height=4E6,
+                                      lon_0=9.9167,lat_0=51.5167,fix_aspect=False)
+        map.drawcountries(color='black', linewidth=1)
+        map.shadedrelief()
+        
+        #create and draw meridians and parallels grid lines
+        map.drawparallels(np.arange( -90., 120.,30.),labels=[1,0,0,0],fontsize=10)
+        map.drawmeridians(np.arange(-180.,180.,30.),labels=[0,0,0,1],fontsize=10)
+            
+        x, y = map(0, 0)
+        point = map.plot(x, y, 'ro', markersize = 3, color = 'red')[0]
+        
+        text = plt.text(0.5, 1.05, str(start_date), ha='center', transform=ax.transAxes,)
+        
+        flights = self.flights_merged
+        def animate(i):
 
+            global text
+            text.remove()
+            start_date = '01-03-2015 00:00:00'
+            start_date = datetime.strptime(start_date, '%d-%m-%Y %H:%M:%S') + timedelta(minutes = 5 * i)
+            end_date = start_date + timedelta(minutes = 5)
+            filtered_flights = flights[flights['Time Over'].between(start_date, end_date)]
+            x, y = map(np.array(filtered_flights['Longitude']), np.array(filtered_flights['Latitude']))
+            point.set_data(x, y)
+            text = ax.text(0.5, 1.05, str(start_date), ha='center', transform=ax.transAxes,)
+            
+            return point,
+        
+        myAnimation = animation.FuncAnimation(fig, animate, frames=300, interval=200)
 
+        if save == True:
+            # Set up formatting for the movie files
+            Writer = animation.writers['ffmpeg']
+            writer = Writer(fps=10, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
+            myAnimation.save('aircraft.mp4', writer=writer)
+
+    def plot_ATD(self, idx):
+        
+        fig = plt.figure(figsize=(16,12))
+        ax = plt.subplot(111)
+        plt.title('Air Traffic Density (km/km$^2$ h) from {0} till {1}'.format(self.combined_datetime[idx] - 
+                                                                               timedelta(minutes = self.time_window), 
+                                                                               self.combined_datetime[idx]))
+        plt.rcParams.update({'font.size': 16})
+        bmap = Basemap(projection='lcc',resolution='i',width=5E6,height=3.5E6,
+                                     lon_0=15,lat_0=47.5,fix_aspect=False)
+        bmap.drawcoastlines()
+        bmap.drawcountries()
+        bmap.bluemarble()
+        
+        #create and draw meridians and parallels grid lines
+        bmap.drawparallels(np.arange( -90., 120.,10.),labels=[1,0,0,0],fontsize=10)
+        bmap.drawmeridians(np.arange(-180.,180.,10.),labels=[0,0,0,1],fontsize=10)
+        
+        lons, lats = bmap(*np.meshgrid(np.arange(min_lon + res_lon/2, max_lon, res_lon),
+                                      np.arange(min_lat + res_lat/2, max_lat, res_lat)))
+        
+        # contourf 
+        im = bmap.contourf(lons, lats, self.flights_ATD[idx].T, np.arange(0, 15, 0.1), 
+                          extend='max', cmap='jet')
+        cbar = plt.colorbar(im)
+        
+    def time_gaps(self, n):
+        
+        self.timegaps = []
+        
+        flights = sample(self.flighttrack['ECTRL ID'].unique(), n)
+        
+        for flight in flights:
+            
+            self.time_over = self.flighttrack[self.flighttrack['ECTRL ID'] == flight][['Time Over']]
+            timedist = list(map(miscellaneous.dist, self.time_over['Time Over'][1:], self.time_over['Time Over'].shift()[1:]))
+            self.timegaps.append([timegap.seconds // 60 for timegap in timedist])
+
+        self.timegaps = np.concatenate(self.timegaps)
+        fig, ax1 = plt.subplots(figsize=(8, 4))
+        ax1.hist(self.timegaps, bins = 60, color = 'purple', alpha = 0.3)
+        ax1.set_xlabel('time gap in mins between two registered flight points')
+        ax1.set_ylabel('occurrence count')
+        ax1.grid(False)
+        ax2 = ax1.twinx()
+        ax2.hist(self.timegaps, bins = 60, density=True,
+                   cumulative=True, color = '#f39c12', alpha = 0.3)
+        ax2.set_ylabel('likelihood of $t_{gap} <= val$')
+        ax2.grid(False)
+        plt.show()
 
 class flights_after_2018:
     
@@ -583,54 +542,58 @@ class flights_after_2018:
         self.nr_of_flights()
     
     def nr_of_flights(self):
-        flights0319 = pd.read_csv(path + "Flight_data\\" + "flightlist_20{0}{1}.csv".format(self.year, self.month),
-                                  sep=",")
+        flights0319 = pd.read_csv(flight_path + 'flightlist_20{0}{1}.csv'.format(self.year, self.month),
+                                  sep=',')
     
-        flights0319 = flights0319.drop(["callsign", "number", "icao24", "registration", "day"], axis = 1)
+        flights0319 = flights0319.drop(['callsign', 'number', 'icao24', 'registration', 'day'], axis = 1)
         
-        flights0319.columns = ["AC_type", "ICAO_dep", "ICAO_dest", "dep_time", "arr_time", "lat_dep", "lon_dep",
-                                        "FL_dep", "lat_dest", "lon_dest", "FL_dest"]
-        
-        flights0319clean = flights0319.dropna(axis = 0, how = 'any', subset = ['dep_time', 'arr_time',
-                                                              'lat_dep', 'lon_dep', 'FL_dep', 'lat_dest', 
-                                                              'lon_dest', 'FL_dest'])
+        flights0319.columns = ['AC_type', 'ICAO_dep', 'ICAO_dest', 'dep_time', 'arr_time', 'lat_dep', 'lon_dep',
+                                        'FL_dep', 'lat_dest', 'lon_dest', 'FL_dest']
+    
         # subset flights flying over Europe
         
-        flights0319_subset = flights0319clean[(((flights0319clean['lat_dep'] > min_lat) & 
-                                                (flights0319clean['lat_dep'] < max_lat) & 
-                                                (flights0319clean['lon_dep'] > min_lon) &
-                                                (flights0319clean['lon_dep'] < max_lon)) | 
-                                              ((flights0319clean['lat_dest'] > min_lat) & 
-                                                (flights0319clean['lat_dest'] < max_lat) &
-                                                (flights0319clean['lon_dest'] > min_lon) &
-                                                (flights0319clean['lon_dest'] < max_lon)))]
-    
-        # use reference flightdata from Dec 2018 which only includes flights over Europe to find combinations of airports (dep & dest)
-        flights1218 = pd.read_csv(path + "Flight_data\\" + "Flights_201812_201812.csv", sep=",")
-        flights1218.columns = ["ECTRL ID", "ICAO_dep", "lat_dep", "lon_dep", "ICAO_dest", "lat_dest", "lon_dest",
-                                        "planned_dep_time", "planned_arr_time", "dep_time", "arr_time", "AC_type",
-                                        "AC_operator", "AC_regis", "flight_type", "market", "req_FL", "dist"]
+        self.flights0319_subset = flights0319[(((flights0319['lat_dep'] > min_lat) & 
+                                                (flights0319['lat_dep'] < max_lat) & 
+                                                (flights0319['lon_dep'] > min_lon) &
+                                                (flights0319['lon_dep'] < max_lon)) | 
+                                              ((flights0319['lat_dest'] > min_lat) & 
+                                                (flights0319['lat_dest'] < max_lat) &
+                                                (flights0319['lon_dest'] > min_lon) &
+                                                (flights0319['lon_dest'] < max_lon)))]
+            
+        self.flights0319_subset = self.flights0319_subset.sort_values(by=['lat_dest', 'lon_dest'])
+        self.flights0319_subset['ICAO_dep'] = self.flights0319_subset['ICAO_dep'].bfill().ffill().tolist()
+        self.flights0319_subset['ICAO_dest'] = self.flights0319_subset['ICAO_dest'].bfill().ffill().tolist()
+                
+        refflights = pd.DataFrame(columns = ['ICAO_dep', 'ICAO_dest'])
         
-        flights1218 = flights1218[["ICAO_dep", "ICAO_dest"]]
+        # use reference flightdata from Dec 2018 which only includes flights over Europe to find combinations of airports (dep & dest)
+        for month in ['03_18', '06_18','09_18', '12_18', '03_19']:
+            flights1218 = pd.read_csv(flight_path + 'Flights_{0}.csv'.format(month), sep=',')
+            flights1218.columns = ['ECTRL ID', 'ICAO_dep', 'lat_dep', 'lon_dep', 'ICAO_dest', 'lat_dest', 'lon_dest',
+                                        'planned_dep_time', 'planned_arr_time', 'dep_time', 'arr_time', 'AC_type',
+                                        'AC_operator', 'AC_regis', 'flight_type', 'market', 'req_FL', 'dist']
+            
+            refflights = refflights.append(flights1218[['ICAO_dep', 'ICAO_dest']])
         
         # get all combinations of DEP - ARR airports in both datasets and get correspondences
-        keys = list(flights1218.columns.values)
+        keys = list(refflights.columns.values)
         
-        airport_combi_ref = flights1218.set_index(keys).index
+        airport_combi_ref = refflights.set_index(keys).index
         airport_combi = flights0319.set_index(keys).index
         flights0319_combi = flights0319[airport_combi.isin(airport_combi_ref)]
         
         # filter obtained flights on NaN
-        flights0319_combi = flights0319_combi.dropna(axis = 0, how = 'any', subset = ['dep_time', 'arr_time',
-                                                              'lat_dep', 'lon_dep', 'FL_dep', 'lat_dest', 
-                                                              'lon_dest', 'FL_dest'])
-        
+        #flights0319_combi = flights0319_combi.dropna(axis = 0, how = 'any', subset = ['dep_time', 'arr_time',
+        #                                                      'lat_dep', 'lon_dep', 'FL_dep', 'lat_dest', 
+        #                                                      'lon_dest', 'FL_dest'])
+
         # combine df found by matching DEP - ARR airport pairs with df found by geolocations
-        self.flights0319_combined = flights0319_subset.append(flights0319_combi, ignore_index=True)
+        self.flights0319_combined = self.flights0319_subset.append(flights0319_combi, ignore_index=True)
         
         # drop any duplicates presents
         self.flights0319_combined = self.flights0319_combined.drop_duplicates()
-        
+
         return self.flights0319_combined
     
     # # remove milliseconds in datestrings and convert to datetime
