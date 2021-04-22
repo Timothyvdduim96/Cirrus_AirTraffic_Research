@@ -83,7 +83,7 @@ class ML_model:
         # select parts of ERA5 data at times when CALIPSO overpasses Europe
         overpass_time = [datetime.combine(date, time) 
                           for date, time in zip(self.calipso.dates, self.calipso.times)] # merge dates and times to get a datetime list of Calipso overpasses
-        
+        print(overpass_time)
         def hour_rounder(t):
             # Rounds to nearest hour by adding a timedelta hour if minute >= 30
             return (t.replace(second=0, microsecond=0, minute=0, hour=t.hour)
@@ -95,7 +95,7 @@ class ML_model:
         hour_list = pd.date_range(start = start, end = end, periods = self.nr_periods).to_pydatetime().tolist()
         
         overpass_time = [hour_rounder(overpass) for overpass in overpass_time]
-        
+        print(hour_list)
         idx = [key for key, val in enumerate(hour_list) if val in overpass_time]
         print(idx)
         rel_hum = rel_hum[idx, :, :, :]
@@ -109,13 +109,13 @@ class ML_model:
                           if overpass_time.count(x) > 1)
         
         if len(idx) != len(self.calipso.CALIPSO_cirrus):
-            cirrus_cover = np.delete(self.calipso.CALIPSO_cirrus, list(remove_dup.values()), axis = 0)
+            cirrus_cover = np.delete(self.calipso.CALIPSO_cirrus, list(remove_dup.values()), axis = 0)[:, 2:, :, :]
         else:
-            cirrus_cover = self.calipso.CALIPSO_cirrus
+            cirrus_cover = self.calipso.CALIPSO_cirrus[:, 2:, :, :]
             
         # transpose 2nd and 3rd axes (lat and lon) so that it matches the cirrus cover array and match size
-        rel_hum = np.transpose(rel_hum, (0, 1, 3, 2))[:, :, :-1, :-1] 
-        temp = np.transpose(temp, (0, 1, 3, 2))[:, :, :-1, :-1]
+        rel_hum = np.transpose(rel_hum, (0, 1, 3, 2))[:, 2:, :-1, :-1] 
+        temp = np.transpose(temp, (0, 1, 3, 2))[:, 2:, :-1, :-1]
         rel_hum = np.where(np.isnan(cirrus_cover) == True, np.nan, rel_hum)
         temp = np.where(np.isnan(cirrus_cover) == True, np.nan, temp)
         #temp_ERA5 = np.where(np.isnan(temp_from_calipso) == True, np.nan, temp)
@@ -124,8 +124,8 @@ class ML_model:
         cirrus_cover = cirrus_cover.reshape(-1)
         rel_hum = rel_hum.reshape(-1)
         temp = temp.reshape(-1)
-        pres_lvl = np.tile(np.repeat(np.array([100, 125, 150, 175, 200, 225,
-            250, 300, 350, 400, 450]), np.repeat(20000, 11)), len(idx))
+        pres_lvl = np.tile(np.repeat(np.array([150, 175, 200, 225,
+            250, 300, 350, 400, 450]), np.repeat(20000, 9)), len(idx))
         #temp_from_calipso = calipso.CALIPSO_temp.reshape(-1)
         #temp_ERA5 = temp_ERA5.reshape(-1)
         
@@ -294,19 +294,19 @@ dummy_clf.predict(rfmodel.X_train_sampled)
 constant_pred_sampled = dummy_clf.score(rfmodel.X_train_sampled, rfmodel.y_train_sampled)
 
 accuracy = pd.DataFrame(list(zip(thresholds, accuracy_train, accuracy_train_sampled, 
-                                 accuracy_test, accuracy_test_sampled)), columns = ['thresholds', 
-                                 'accuracy_train', 'accuracy_train_sampled', 
-                                 'accuracy_test', 'accuracy_test_sampled'])
+                                  accuracy_test, accuracy_test_sampled)), columns = ['thresholds', 
+                                  'accuracy_train', 'accuracy_train_sampled', 
+                                  'accuracy_test', 'accuracy_test_sampled'])
 
 precision = pd.DataFrame(list(zip(thresholds, precision_train, precision_train_sampled, 
-                                 precision_test, precision_test_sampled)), columns = ['thresholds', 
-                                 'precision_train', 'precision_train_sampled', 
-                                 'precision_test', 'precision_test_sampled'])
+                                  precision_test, precision_test_sampled)), columns = ['thresholds', 
+                                  'precision_train', 'precision_train_sampled', 
+                                  'precision_test', 'precision_test_sampled'])
                                                                                     
 recall = pd.DataFrame(list(zip(thresholds, recall_train, recall_train_sampled, 
-                                 recall_test, recall_test_sampled)), columns = ['thresholds', 
-                                 'recall_train', 'recall_train_sampled', 
-                                 'recall_test', 'recall_test_sampled'])
+                                  recall_test, recall_test_sampled)), columns = ['thresholds', 
+                                  'recall_train', 'recall_train_sampled', 
+                                  'recall_test', 'recall_test_sampled'])
 
 def plotting(metric, namevar):
     df = metric.melt("thresholds", var_name = namevar, value_name = 'score')
@@ -324,13 +324,13 @@ plt.rc('font', size=16)
 fig, axes = plt.subplots(2, 2, sharex=True, sharey=False, figsize=(12,8))
 fig.suptitle('Random Forest performance')
 sns.lineplot(ax = axes[0, 0], data = accuracy, x="thresholds", y="score", hue = 'set', 
-                 style = 'oversampled')
+                  style = 'oversampled')
 axes[0, 0].set_title('accuracy')
 sns.lineplot(ax = axes[1, 1], data = precision, x="thresholds", y="score", hue = 'set', 
-             style = 'oversampled')
+              style = 'oversampled')
 axes[1, 1].set_title('precision')
 sns.lineplot(ax = axes[1, 0], data = recall, x="thresholds", y="score", hue = 'set', 
-             style = 'oversampled')
+              style = 'oversampled')
 axes[1, 0].set_title('recall')
 plt.tight_layout()
 plt.legend(bbox_to_anchor=(0.3, 1.3), borderaxespad=0.)

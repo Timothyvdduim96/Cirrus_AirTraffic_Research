@@ -9,7 +9,7 @@ Created on Thu Apr  8 13:49:08 2021
 '''
 
 from netCDF4 import Dataset
-import datetime
+from datetime import datetime
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -33,6 +33,10 @@ class miscellaneous:
     def fl_to_km(fl):
         ft = fl * 100
         return ft * 3.048e-4
+    
+    def km_to_fl(km):
+        fl = km / 3.048e-4
+        return fl / 100
     
     def deg_to_km(deg):
         conv = 2 * m.pi * 6.378e3 / 360
@@ -138,15 +142,16 @@ class miscellaneous:
         print(overpass_freq)
         ax.bar((overpass_freq.index / 24 + 1 / 48 ) * 2 * m.pi, 
                overpass_freq["nr of CALIPSO overpasses during March '15"], 
-               width = 0.2, alpha = 0.5, color = "#f39c12")
+               width = 0.2, alpha = 0.5, color = "green")
         
         ax.xaxis.set_tick_params(labelsize=16)
         ax.yaxis.set_tick_params(labelsize=14)
         ax.set_theta_zero_location("N")
         ax.set_theta_direction(-1)
         ax.set_xticks(np.arange(0, 2 * m.pi + 2 / 24 * m.pi, 2 / 24 * m.pi))
-        ax.set_yticks(np.arange(0, 600, 100))
-        ax.set_title("Overpass frequency of CALIPSO over Europe during Mar, Jun,\n Sep & Dec from 2015 till 2020")
+        ax.set_yticks(np.arange(0, 550, 100))
+        ax.set_rlabel_position(83.5)
+        #ax.set_title("Overpass frequency of CALIPSO over Europe during Mar, Jun,\n Sep & Dec from 2015 till 2020")
         ticks = [f"{i}:00" for i in range(0, 24, 1)]
         ax.set_xticklabels(ticks)
         

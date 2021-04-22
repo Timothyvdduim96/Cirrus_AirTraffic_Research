@@ -68,47 +68,47 @@ meteo_path = 'E:\\Research_cirrus\\ERA5_data\\'
 '''
 ----------------------------------MAIN-----------------------------------------
 '''
-all_calipso = []
+# all_calipso = []
 
-for month in months_complete:
-    print(month)
-    lidar = CALIPSO_analysis(lidar_path + 'LIDAR_' + month, 15, True)
-    calipso = lidar.layered_cirrus
-    calipso = np.vstack(calipso)
-    all_calipso.append(calipso[np.isnan(calipso) == False])
+# for month in months_complete:
+#     print(month)
+#     lidar = CALIPSO_analysis(lidar_path + 'LIDAR_' + month, 15, True)
+#     calipso = lidar.layered_cirrus
+#     calipso = np.vstack(calipso)
+#     all_calipso.append(calipso[np.isnan(calipso) == False])
 
-#%%
-fig = plt.figure()
-ax1 = fig.add_subplot(111)
+# #%%
+# fig = plt.figure()
+# ax1 = fig.add_subplot(111)
 
-for calipso in all_calipso:
-    sns.kdeplot(calipso, vertical = True)
+# for calipso in all_calipso:
+#     sns.kdeplot(calipso, vertical = True)
     
-plt.ylim([np.min(all_calipso), np.max(all_calipso)])
-ax1.set_yscale('log')
-ax1.set_ylim(10 * np.ceil(calipso.max() / 10), calipso.min()) # avoid truncation of 1000 hPa
-subs = [1,2,5]
+# plt.ylim([np.min(all_calipso), np.max(all_calipso)])
+# ax1.set_yscale('log')
+# ax1.set_ylim(10 * np.ceil(calipso.max() / 10), calipso.min()) # avoid truncation of 1000 hPa
+# subs = [1,2,5]
 
-if calipso.max() / calipso.min() < 30:
-    subs = [1,2,3,4,5,6,7,8,9]
+# if calipso.max() / calipso.min() < 30:
+#     subs = [1,2,3,4,5,6,7,8,9]
     
-y1loc = matplotlib.ticker.LogLocator(base=10, subs=subs)
-ax1.yaxis.set_major_locator(y1loc)
-fmt = matplotlib.ticker.FormatStrFormatter("%g")
-ax1.yaxis.set_major_formatter(fmt)
-#plt.gca().invert_yaxis()
-z0 = 8.400    # scale height for pressure_to_altitude conversion [km]
-altitude = z0 * np.log(1015.23/y)
-# add second y axis for altitude scale 
-axr = ax1.twinx()
-label_xcoor = 1.05
-axr.set_ylabel("Altitude [km]")
-axr.yaxis.set_label_coords(label_xcoor, 0.5)
-axr.set_ylim(altitude.min(), altitude.max())
-yrloc = matplotlib.ticker.MaxNLocator(steps=[1,2,5,10])
-axr.yaxis.set_major_locator(yrloc)
-axr.yaxis.tick_right()
-plt.show()
+# y1loc = matplotlib.ticker.LogLocator(base=10, subs=subs)
+# ax1.yaxis.set_major_locator(y1loc)
+# fmt = matplotlib.ticker.FormatStrFormatter("%g")
+# ax1.yaxis.set_major_formatter(fmt)
+# #plt.gca().invert_yaxis()
+# z0 = 8.400    # scale height for pressure_to_altitude conversion [km]
+# altitude = z0 * np.log(1015.23/y)
+# # add second y axis for altitude scale 
+# axr = ax1.twinx()
+# label_xcoor = 1.05
+# axr.set_ylabel("Altitude [km]")
+# axr.yaxis.set_label_coords(label_xcoor, 0.5)
+# axr.set_ylim(altitude.min(), altitude.max())
+# yrloc = matplotlib.ticker.MaxNLocator(steps=[1,2,5,10])
+# axr.yaxis.set_major_locator(yrloc)
+# axr.yaxis.tick_right()
+# plt.show()
 
 #%%
 
@@ -170,28 +170,33 @@ class time_series:
         self.calipso_day = miscellaneous.flatten_clean(calipso_day)
         
     def air_traffic(self, month, mode):
-        
-        if month in months_complete:
+                    
+        if mode == 'save':
             
-            if mode == 'save':
-                
-                flight = flight_analysis(month)
-                flight.exe_ac(mode = mode, resample_interval = '1min', window = 30, V_aircraft = 1200,
-                                    dates = self.dates, times = self.times, lon_pos = self.lon_pos,
-                                    lat_pos = self.lat_pos, savename = 'interpol_03_19')
-                flight.grid_ATD(flight.combined_datetime, 30)
-                atd = flight.flights_ATD
-                atd = np.where(np.isnan(self.calipso) == True, np.nan, atd)
-                self.atd = miscellaneous.flatten_clean(atd)
-                np.save('Flights_{0}'.format(month), self.atd, allow_pickle = True)
-                
-            elif mode == 'load':
-                
-                self.atd = np.load(flight_path + 'Flights_{0}'.format(month) + '.npy',
-                          allow_pickle = True)
-                
-            else:
-                sys.exit('mode is not recognized')
+            flight = flight_analysis(month)
+            flight.individual_flights()
+            flight.flighttracks()
+            flight.merge_datasets_no_interpol()
+            max_time = max(flight.flights_merged['Time Over'])
+            timedelta_sec = (max(flight.flights_merged['Time Over']) - min(flight.flights_merged['Time Over'])).seconds
+            timedelta_min = int(timedelta_sec / 60)
+            atd = flight.grid_ATD(flight.flights_merged, [6, 14], [max_time], timedelta_min)
+            #flight.exe_ac(mode = mode, resample_interval = '1min', window = 30, V_aircraft = 1200,
+            #                    dates = self.dates, times = self.times, lon_pos = self.lon_pos,
+            #                    lat_pos = self.lat_pos, savename = 'interpol_03_19')
+            #flight.grid_ATD(flight.combined_datetime, 30)
+            #atd = flight.flights_ATD
+            #atd = np.where(np.isnan(self.calipso) == True, np.nan, atd)
+            self.atd = miscellaneous.flatten_clean(atd)
+            np.save('Flights_{0}_allATD'.format(month), self.atd, allow_pickle = True)
+            
+        elif mode == 'load':
+            
+            self.atd = np.load(flight_path + 'Flights_{0}'.format(month) + '.npy',
+                      allow_pickle = True)
+            
+        else:
+            sys.exit('mode is not recognized')
                 
     def meteo_data(self, month):
         
@@ -511,3 +516,17 @@ class time_series:
         plt.legend(prop={'size': 16}, ncol = 3, title = 'Month')
         plt.xlabel('{0} ($^{\circ}$)'.format(axis))
         plt.ylabel('Density')
+
+#%%
+atds = []
+
+for month in months_1518:
+    print(month)
+    time = time_series()
+    time.air_traffic(month, 'save')
+    air_traffic_density = time.atd
+    print(air_traffic_density)
+    atds.append(air_traffic_density)
+    
+atd_means = [np.mean(atd) * 1000 for atd in atds]
+

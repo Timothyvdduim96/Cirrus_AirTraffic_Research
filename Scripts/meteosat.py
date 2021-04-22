@@ -34,7 +34,7 @@ import jenkspy
 plt.style.use('seaborn-darkgrid')
 plt.rc('text', usetex=False)
 plt.rc('font', family='times')
-plt.rc('xtick', labelsize=14) 
+plt.rc('xtick', labelsize=20) 
 plt.rc('ytick', labelsize=20) 
 plt.rc('font', size=20) 
 plt.rc('figure', figsize = (12, 5))
@@ -200,7 +200,7 @@ class METEOSAT_analysis:
             flights.exe_ac('load', 'None', 'None',
                        'None','None', 'None','None',
                        'None', 'None', '_full')
-            flights.grid_ATD(quarter_hours_day, 15)
+            flights.grid_ATD(flights.flights_merged, [6, 14], self.quarter_hours_day, 15)
             self.flights_ATD = flights.flights_ATD
             
     def delta_cirr_ATD(self):
@@ -331,6 +331,45 @@ class METEOSAT_analysis:
         day_quarter_hours = pd.date_range(start = datetime.strptime('01-03-2015 07:00', '%d-%m-%Y %H:%M'), 
                                           end = datetime.strptime('01-03-2015 18:00', '%d-%m-%Y %H:%M'),
                                           freq = '15min').to_pydatetime().tolist()
+
+        flights_ATD = np.reshape(meteo.flights_ATD, (31, -1, 200, 100))
+        flights_ATD = np.mean(flights_ATD, axis = (2, 3))
+        cirrus_cover = np.reshape(meteo.cirrus_cover, (31, -1, 200, 100))
+        cirrus_cover = np.mean(cirrus_cover, axis = (2, 3))
+        
+        #day_quarter_hours = [datestamp.time() for datestamp in day_quarter_hours]
+        mean_flights_ATD = np.mean(flights_ATD, axis = 0)
+        ci_flights = 1.96 * np.std(flights_ATD, axis = 0)
+        mean_cirrus_cover = np.mean(cirrus_cover, axis = 0)
+        ci_cirrus = 1.96 * np.std(cirrus_cover, axis = 0)
+        
+        conf_int = lambda x: st.t.interval(alpha=0.95, df=len(x)-1, loc=np.mean(x), scale=st.sem(x))
+        
+        ci_ATD_lower, ci_ATD_upper = zip(*[conf_int(row) for row in flights_ATD.T])
+        ci_cirrus_lower, ci_cirrus_upper = zip(*[conf_int(row) for row in cirrus_cover.T])
+        
+        fig, ax1 = plt.subplots()
+        ax2 = ax1.twinx()
+        ax1.plot(day_quarter_hours, mean_flights_ATD, color = 'b', label = 'Air Traffic Density')
+        ax1.fill_between(day_quarter_hours, ci_ATD_lower, 
+                         ci_ATD_upper, color='b', alpha=.1)
+        ax2.plot(day_quarter_hours, mean_cirrus_cover, color = 'r', label = 'Cirrus cover')
+        ax2.fill_between(day_quarter_hours, ci_cirrus_lower, 
+                         ci_cirrus_upper, color='r', alpha=.1)
+        myFmt = mdates.DateFormatter('%H:%M')
+        ax1.xaxis.set_major_formatter(myFmt)
+        
+        lines, labels = ax1.get_legend_handles_labels()
+        lines2, labels2 = ax2.get_legend_handles_labels()
+        ax2.legend(lines + lines2, labels + labels2, loc=0)
+        ax2.grid(False)
+        ax1.set_xlabel('Time')
+        ax1.set_ylabel('Daily mean ATD')
+        ax2.set_ylabel('Daily mean cirrus cover')
+        
+        day_quarter_hours = pd.date_range(start = datetime.strptime('01-03-2015 07:00', '%d-%m-%Y %H:%M'), 
+                                          end = datetime.strptime('01-03-2015 18:00', '%d-%m-%Y %H:%M'),
+                                          freq = '15min').to_pydatetime().tolist()
         
         #day_quarter_hours = [datestamp.time() for datestamp in day_quarter_hours]
         mean_flights_ATD = np.mean(self.flights_ATD, axis = 0)
@@ -340,7 +379,7 @@ class METEOSAT_analysis:
         
         conf_int = lambda x: st.t.interval(alpha=0.95, df=len(x)-1, loc=np.mean(x), scale=st.sem(x))
         
-        ci_ATD_lower, ci_ATD_upper = zip(*[conf_int(row) for row in flights_ATD.T])
+        ci_ATD_lower, ci_ATD_upper = zip(*[conf_int(row) for row in self.flights_ATD.T])
         ci_cirrus_lower, ci_cirrus_upper = zip(*[conf_int(row) for row in self.cirrus_cover.T])
         
         fig, ax1 = plt.subplots()
@@ -404,7 +443,9 @@ class METEOSAT_analysis:
             Writer = animation.writers['ffmpeg']
             writer = Writer(fps=2, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
             myAnimation.save('ATD.mp4', writer=writer)
-    
+
+meteo = METEOSAT_analysis()
+meteo.exe_meteo()
 #%%
 df = pd.DataFrame(list(zip(np.reshape(meteo.flights_ATD_res, -1), 
                             np.reshape(meteo.diffs, -1), np.reshape(meteo.ERA_temp, -1),
@@ -412,53 +453,112 @@ df = pd.DataFrame(list(zip(np.reshape(meteo.flights_ATD_res, -1),
 
 #%%
 
-df_adj = df[df['RH'] >= 100]# & (df['RH'] < 52) & (df['temp'] > 222) & (df['temp'] < 223)]
-break_1 = []
-break_2 = []
-break_3 = []
-break_4 = []
+def bin_atd_meteo(df_selec, barplot):
 
-for hr in range(45):
-    print(hr)
-    breaks = jenkspy.jenks_breaks(np.reshape(meteo.flights_ATD_res[hr, :, :], -1), nb_class = 5)
-    break_1.append(breaks[1])
-    break_2.append(breaks[2])
-    break_3.append(breaks[3])
-    break_4.append(breaks[4])
+    break_1 = []
+    break_2 = []
+    break_3 = []
+    break_4 = []
+    maxes = []
     
-day_quarter_hours = pd.date_range(start = datetime.strptime('01-03-2015 07:00', '%d-%m-%Y %H:%M'), 
-                                          end = datetime.strptime('01-03-2015 18:00', '%d-%m-%Y %H:%M'),
-                                          freq = '15min').to_pydatetime().tolist()
+    flights_ATD_res = meteo.flights_ATD_res  * 1000  / 24
+    
+    for hr in range(45):
+        print(hr)
+        breaks = jenkspy.jenks_breaks(np.reshape(flights_ATD_res[hr, :, :], -1), nb_class = 5)
+        break_1.append(breaks[1])
+        break_2.append(breaks[2] - breaks[1])
+        break_3.append(breaks[3] - breaks[2])
+        break_4.append(breaks[4] - breaks[3])
+        maxes.append(np.max(np.reshape(flights_ATD_res[hr, :, :], -1)) - breaks[4])
+        
+    day_quarter_hours = pd.date_range(start = datetime.strptime('01-03-2015 07:00', '%d-%m-%Y %H:%M'), 
+                                              end = datetime.strptime('01-03-2015 18:00', '%d-%m-%Y %H:%M'),
+                                              freq = '15min').to_pydatetime().tolist()
+    
+    day_quarter_hours = [t.strftime('%H:%M') for t in day_quarter_hours]
+    
+    break_points = pd.DataFrame(list(zip(break_1, break_2, break_3, break_4, maxes)), 
+                                index = day_quarter_hours,
+                                columns = ['no-very low ATD', 'low ATD', 'moderate ATD',
+                                           'high ATD', 'very high ATD'])
+    break_points.loc['mean'] = break_points.mean()
+    break_points = break_points.reindex(index=break_points.index[::-1])
+    print(break_points)
+    if barplot == True:
+        fig, ax = plt.subplots()
+        plt.rc('xtick', labelsize=20) 
+        plt.rc('ytick', labelsize=12)
+        break_points.plot(kind = 'barh', stacked=True, ax = ax)
+        plt.xlabel('ATD (m km$^{-2}$ hr$^{-1}$)')
+        #plt.xlim('ATD (m km$^{-2}$ hr$^{-1}$)')
+        ax.yaxis.set_tick_params(rotation=30)
+        legend = plt.legend(frameon = 1)
+        frame = legend.get_frame()
+        frame.set_color('white')
+    
+    breaks = break_points.loc['mean'].tolist()
+    breaks.insert(0, 0)
+    breaks[-1] = 1e3
+    print(breaks)
+    df_selec['cut_jenks'] = pd.cut(df_selec['ATD'],
+                            bins = breaks,
+                            labels = ['no-very low ATD', 'low ATD', 'moderate ATD', 
+                                      'high ATD', 'very high ATD'],
+                            include_lowest = True)
+    
+    return df_selec
 
-day_quarter_hours = [t.strftime('%H:%M') for t in day_quarter_hours]
+df_adj = df[(df['RH'] >= 100) & (df['temp'] <= 220)]
+df_adj['ATD'] = df_adj['ATD'] * 1000  / 24
 
-break_points = pd.DataFrame(list(zip(break_1, break_2, break_3, break_4, [50] * 45)), 
-                            index = day_quarter_hours)
-break_points.loc['mean'] = break_points.mean()
-break_points = break_points.reindex(index=break_points.index[::-1])
+df_adj = bin_atd_meteo(df_adj, barplot = True)
 
-fig, ax = plt.subplots()
-plt.rc('xtick', labelsize=20) 
-plt.rc('ytick', labelsize=12)
-break_points.plot(kind = 'barh', stacked=True, ax = ax)
-plt.xlabel('Air Traffic Density (km km$^{-2}$ hr$^{-1}$)')
-ax.yaxis.set_tick_params(rotation=30)
-legend = plt.legend(frameon = 1)
-frame = legend.get_frame()
-frame.set_color('white')
-plt.xlim([0, 40])
-
-breaks = break_points.loc['mean'].tolist()
-breaks.insert(0, 0)
-breaks[-1] = 1e3
-
-df_adj['cut_jenks'] = pd.cut(df_adj['ATD'],
-                        bins = breaks,
-                        labels = ['no-very low ATD', 'low ATD', 'moderate ATD', 'high ATD', 'very high ATD'],
-                        include_lowest = True)
-
-#['no-low ATD', 'moderate ATD', 'high ATD']
 print(df_adj['cut_jenks'].value_counts())
 
-df_adj.groupby(by = 'cut_jenks').mean()
+df_sum = df_adj.groupby(by = 'cut_jenks').mean()
 
+def coeff_linregr(data,x,Neff):
+    slope, intercept, r_value, p_value, std_err = stats.linregress(x,data)
+    t = r_value*np.sqrt(Neff - 2)/np.sqrt(1 - r_value**2) #compute t for t test
+    p_val = stats.t.sf(np.abs(t), Neff-1)*2 #compute p value from t and dimensions
+    return slope, std_err, p_val
+
+slope, std_err, p_val = coeff_linregr(df_sum['delta_cirrus'].tolist(), df_sum['ATD'].tolist(), 5)
+
+
+#%%
+
+df_adj_subsat = df[(df['RH'] <= 100)]
+
+df_adj_subsat = bin_atd_meteo(df_adj_subsat, barplot = False)
+print(df_adj_subsat['cut_jenks'].value_counts())
+
+df_sum = df_adj_subsat.groupby(by = 'cut_jenks').mean()
+
+slope, std_err, p_val = coeff_linregr(df_sum['delta_cirrus'].tolist(), df_sum['ATD'].tolist(), 5)
+
+#%%
+df_adj['saturation'] = 'supersaturated'
+df_adj_subsat['saturation'] = 'subsaturated'
+
+df_adj_tot = pd.concat([df_adj, df_adj_subsat])
+df_adj_tot['delta_cirrus'] = df_adj_tot['delta_cirrus'] * 1000
+
+#%%
+plt.figure()
+plt.rc('xtick', labelsize=20) 
+plt.rc('ytick', labelsize=20)
+sns.pointplot(x = 'cut_jenks', y = 'delta_cirrus', hue='saturation', data = df_adj_tot,
+              capsize=.2, dodge = True)
+plt.ylabel('$\Delta$cirrus ({0})'.format('\u2030'))
+plt.xlabel(' ')
+
+#%%
+plt.figure()
+sns.boxplot(x = 'cut_jenks', y = 'ATD', data = df_adj)
+plt.ylabel('Air Traffic Density (m km$^{-2}$ hr$^{-1}$)')
+
+#%%
+
+slope, std_err, p_val = coeff_linregr(df_sum['delta_cirrus'], df_sum['ATD'], 5)

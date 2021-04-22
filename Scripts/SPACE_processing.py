@@ -51,12 +51,26 @@ min_lon = -10 # research area min longitude
 max_lon = 40 # research area max longitude
 min_lat = 35 # research area min latitude
 max_lat = 60 # research area max latitude
+months_complete = ['03_15', '06_15', '09_15', '12_15', '03_16', '06_16', '09_16', '12_16',
+                   '03_17', '06_17', '09_17', '12_17', '03_18', '06_18', '09_18', '12_18',
+                   '03_19', '06_19', '09_19', '12_19', '03_20', '06_20', '09_20', '12_20']
+months_1518 = months_complete[:16] # months till 2018
+months_1920 = months_complete[16:] # months 2019 & 2020
+dates = [month.replace('_', '-') for month in months_complete]
+years = ['2015', '2016', '2017', '2018', '2019', '2020'] # years
+
+'''
+---------------------------------PATHS----------------------------------------
+'''
+
+flight_path = 'E:\\Research_cirrus\\Flight_data\\'
+lidar_path = 'E:\\Research_cirrus\\CALIPSO_data\\'
+meteo_path = 'E:\\Research_cirrus\\ERA5_data\\'
 
 #%%
 '''
 ----------------------------PROCESS CALIPSO DATA-------------------------------
 '''
-lidar_path = "E:\\Research_cirrus\\CALIPSO_data\\"
 
 class hdf4_files:
 
@@ -100,10 +114,12 @@ class hdf4_files:
             data = data
         return data
 
+
+
 class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(lidar_path + 'LIDAR_03_15', 15, False)
     
-    def __init__(self, directory_name, time_res, pressure_axis): # pressure axis is a boolean!
-        self.directory_name = directory_name
+    def __init__(self, month, time_res, pressure_axis): # pressure axis is a boolean!
+        self.directory_name = lidar_path + 'LIDAR_' + month
         self.load_hdf4 = hdf4_files
         self.time_res = time_res
         self.pressure_axis = pressure_axis
@@ -229,106 +245,103 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(lidar_path + 'LIDAR_03_15
             t['time'] = t['time'].apply(lambda x: 24 * 3600 * eval('0.{0}'.format(x)))
             t['time'] = t['time'].apply(lambda x: self.convert_seconds(x))
             combined_datetime = [datetime.combine(date, time) for date, time in zip(t['date'], t['time'])]
-    
             combined_datetime = list(np.array(combined_datetime)[subset_area])
             try:
                 start_time_window = combined_datetime[0]
                 end_time_window = start_time_window + timedelta(minutes = self.time_res)
                 
                 while start_time_window < combined_datetime[-1]:
-                    
+                
                     time_bool = pd.DataFrame(combined_datetime)[0].between(start_time_window, end_time_window)
                     cirrus_flag = pd.DataFrame(class_flag).replace(feature_dict) # map this coding to classification flag array
                     self.cirrus_midlayer_pres = np.where(cirrus_flag == 1, midlayer_pres, np.nan)
                     #self.opt_depth = pd.DataFrame(np.where(cirrus_flag == 1, opt_depth, 0))
 
-                    # if self.pressure_axis == False:
+                    if self.pressure_axis == False:
                         
-                    #     cirrus_flag = cirrus_flag.apply(lambda x: max(x), axis = 1) # convert to 1D (remove multi-layered case for ease of analysis)
-                    #     #self.opt_depth = self.opt_depth.apply(lambda x: max(x), axis = 1) # convert to 1D (remove multi-layered case for ease of analysis)
-                    #     df_cirrus = pd.concat([t, pd.DataFrame(lon), pd.DataFrame(lat), cirrus_flag, self.opt_depth], axis = 1)
-                    #     df_cirrus.columns = ['date', 'time', 'lon', 'lat', 'cirrus_cover', 'opt_depth']
-
-                    #     df_cirrus = df_cirrus[subset_area].reset_index(drop=True)
-                    #     df_cirrus['cirrus_cover'].at[~time_bool] = np.nan
-                    #     df_cirrus['opt_depth'].at[~time_bool] = np.nan
-        
-                    #     cirrus_gridded = self.L2_to_L3(np.array(df_cirrus['cirrus_cover']), np.array(df_cirrus['lon']),
-                    #                               np.array(df_cirrus['lat']), res_lon, res_lat, 'mean')
-                    #     #self.opt_depth = self.L2_to_L3(np.array(df_cirrus['opt_depth']), np.array(df_cirrus['lon']),
-                    #     #                          np.array(df_cirrus['lat']), res_lon, res_lat, 'max')
-                    #     #cirrus_count = self.L2_to_L3(np.array(df_cirrus['cirrus_cover']), np.array(df_cirrus['lon']),
-                    #     #                          np.array(df_cirrus['lat']), res_lon, res_lat, 'count')
+                        cirrus_flag = cirrus_flag.apply(lambda x: max(x), axis = 1) # convert to 1D (remove multi-layered case for ease of analysis)
+                        #self.opt_depth = self.opt_depth.apply(lambda x: max(x), axis = 1) # convert to 1D (remove multi-layered case for ease of analysis)
+                        df_cirrus = pd.concat([t, pd.DataFrame(lon), pd.DataFrame(lat), cirrus_flag], axis = 1)
+                        df_cirrus.columns = ['date', 'time', 'lon', 'lat', 'cirrus_cover']
+                        df_cirrus = df_cirrus[subset_area].reset_index(drop=True)
+                        df_cirrus['cirrus_cover'].at[~time_bool] = np.nan
+                        #df_cirrus['opt_depth'].at[~time_bool] = np.nan
+                        cirrus_gridded = self.L2_to_L3(np.array(df_cirrus['cirrus_cover']), np.array(df_cirrus['lon']),
+                                                  np.array(df_cirrus['lat']), res_lon, res_lat, 'mean')
+                        #self.opt_depth = self.L2_to_L3(np.array(df_cirrus['opt_depth']), np.array(df_cirrus['lon']),
+                        #                          np.array(df_cirrus['lat']), res_lon, res_lat, 'max')
+                        #cirrus_count = self.L2_to_L3(np.array(df_cirrus['cirrus_cover']), np.array(df_cirrus['lon']),
+                        #                          np.array(df_cirrus['lat']), res_lon, res_lat, 'count')
                         
-                    # elif self.pressure_axis == True:
-                    #     self.cirrus_midlayer_pres = np.where(cirrus_flag == 1, midlayer_pres, np.nan)
-                    #     self.press_layer_cirrus = np.apply_along_axis(self.bin_pressureL, 1, self.cirrus_midlayer_pres) # bin cirrus top pressure into 7 layers
+                    elif self.pressure_axis == True:
+                        self.cirrus_midlayer_pres = np.where(cirrus_flag == 1, midlayer_pres, np.nan)
+                        self.press_layer_cirrus = np.apply_along_axis(self.bin_pressureL, 1, self.cirrus_midlayer_pres) # bin cirrus top pressure into 7 layers
     
-                    #     self.cirrus_midlayer_temp = np.where((cirrus_flag == 1) &
-                    #                                          (midlayer_pres >= 87.5) &
-                    #                                          (midlayer_pres <= 475), midlayer_temp, np.nan)
+                        self.cirrus_midlayer_temp = np.where((cirrus_flag == 1) &
+                                                              (midlayer_pres >= 87.5) &
+                                                              (midlayer_pres <= 475), midlayer_temp, np.nan)
     
-                    #     # gather data and select relevant data (within ROI)
-                    #     df_cirrus = pd.concat([t, pd.DataFrame(lon), pd.DataFrame(lat)], axis = 1)
-                    #     df_cirrus.columns = ['date', 'time', 'lon', 'lat']
+                        # gather data and select relevant data (within ROI)
+                        df_cirrus = pd.concat([t, pd.DataFrame(lon), pd.DataFrame(lat)], axis = 1)
+                        df_cirrus.columns = ['date', 'time', 'lon', 'lat']
                         
-                    #     subset_area = np.array([(df_cirrus['lon'] >= min_lon) & (df_cirrus['lon'] <= max_lon)
-                    #                       & (df_cirrus['lat'] >= min_lat) & (df_cirrus['lat'] <= max_lat)]).reshape(-1)
+                        subset_area = np.array([(df_cirrus['lon'] >= min_lon) & (df_cirrus['lon'] <= max_lon)
+                                          & (df_cirrus['lat'] >= min_lat) & (df_cirrus['lat'] <= max_lat)]).reshape(-1)
                         
-                    #     df_cirrus = df_cirrus[subset_area].reset_index(drop=True)
-                    #     self.press_layer_cirrus = self.press_layer_cirrus[subset_area]
-                    #     self.cirrus_midlayer_temp = self.cirrus_midlayer_temp[subset_area]
+                        df_cirrus = df_cirrus[subset_area].reset_index(drop=True)
+                        self.press_layer_cirrus = self.press_layer_cirrus[subset_area]
+                        self.cirrus_midlayer_temp = self.cirrus_midlayer_temp[subset_area]
         
-                    #     self.indices = np.where(~self.press_layer_cirrus.any(axis=1))[0] # find idx of all rows with at least 1 non-zero element
+                        self.indices = np.where(~self.press_layer_cirrus.any(axis=1))[0] # find idx of all rows with at least 1 non-zero element
         
-                    #     self.cirrus_midlayer_temp[self.indices,:] = np.nan
+                        self.cirrus_midlayer_temp[self.indices,:] = np.nan
         
-                    #     temp = self.cirrus_midlayer_temp[~np.isnan(self.cirrus_midlayer_temp)]
+                        temp = self.cirrus_midlayer_temp[~np.isnan(self.cirrus_midlayer_temp)]
                         
-                    #     self.temp_layer = np.empty((len(self.press_layer_cirrus),11,))
-                    #     self.temp_layer.fill(np.nan)
+                        self.temp_layer = np.empty((len(self.press_layer_cirrus),11,))
+                        self.temp_layer.fill(np.nan)
                         
-                    #     elements = np.nonzero(self.press_layer_cirrus)
+                        elements = np.nonzero(self.press_layer_cirrus)
           
-                    #     for i, j, T in zip(elements[0], elements[1], temp):
-                    #         self.temp_layer[i,j] = T
+                        for i, j, T in zip(elements[0], elements[1], temp):
+                            self.temp_layer[i,j] = T
                             
                         
-                    #     cirrus_gridded = []
-                    #     #temp_gridded = []
+                        cirrus_gridded = []
+                        #temp_gridded = []
                     
-                    #     for col in self.press_layer_cirrus.T: # loop through pressure layers (columns)
-                    #         cirrus_in_layer = pd.DataFrame(col, columns=['cirrus_cover']).reset_index(drop=True)
-                    #         cirrus_in_layer['cirrus_cover'].at[~time_bool] = np.nan
-                    #         df_layer = pd.concat([df_cirrus, cirrus_in_layer], axis = 1)
-                    #         cirrus_gridded.append(self.L2_to_L3(np.array(df_layer['cirrus_cover']), np.array(df_cirrus['lon']),
-                    #                                         np.array(df_cirrus['lat']), res_lon, res_lat, 'mean'))
+                        for col in self.press_layer_cirrus.T: # loop through pressure layers (columns)
+                            cirrus_in_layer = pd.DataFrame(col, columns=['cirrus_cover']).reset_index(drop=True)
+                            cirrus_in_layer['cirrus_cover'].at[~time_bool] = np.nan
+                            df_layer = pd.concat([df_cirrus, cirrus_in_layer], axis = 1)
+                            cirrus_gridded.append(self.L2_to_L3(np.array(df_layer['cirrus_cover']), np.array(df_cirrus['lon']),
+                                                            np.array(df_cirrus['lat']), res_lon, res_lat, 'mean'))
                             
-                    #     for col in self.temp_layer.T: # loop through pressure layers (columns)
-                    #         cirrus_in_layer = pd.DataFrame(col, columns=['temperature']).reset_index(drop=True)
-                    #         cirrus_in_layer['temperature'].at[~time_bool] = np.nan
-                    #         df_layer = pd.concat([df_cirrus, cirrus_in_layer], axis = 1)
-                    #         #temp_gridded.append(self.L2_to_L3(np.array(df_layer['temperature']), np.array(df_cirrus['lon']),
-                    #         #                               np.array(df_cirrus['lat']), res_lon, res_lat, self.nanmean))
+                        for col in self.temp_layer.T: # loop through pressure layers (columns)
+                            cirrus_in_layer = pd.DataFrame(col, columns=['temperature']).reset_index(drop=True)
+                            cirrus_in_layer['temperature'].at[~time_bool] = np.nan
+                            df_layer = pd.concat([df_cirrus, cirrus_in_layer], axis = 1)
+                            #temp_gridded.append(self.L2_to_L3(np.array(df_layer['temperature']), np.array(df_cirrus['lon']),
+                            #                               np.array(df_cirrus['lat']), res_lon, res_lat, self.nanmean))
                         
                         
-                    # else:
-                    #     print("Input not recognized")
-                    #     break
+                    else:
+                        print("Input not recognized")
+                        break
                     
-                    # self.lon_pos.append(np.array(df_cirrus['lon']))
-                    # self.lat_pos.append(np.array(df_cirrus['lat']))
+                    self.lon_pos.append(np.array(df_cirrus['lon']))
+                    self.lat_pos.append(np.array(df_cirrus['lat']))
                     
-                    # mid_time = start_time_window + (end_time_window - start_time_window) / 2
-                    # binned_datetime = mid_time - timedelta(seconds = mid_time.time().second)
+                    mid_time = start_time_window + (end_time_window - start_time_window) / 2
+                    binned_datetime = mid_time - timedelta(seconds = mid_time.time().second)
                     
                     self.layered_cirrus.append(self.cirrus_midlayer_pres)
-                    #self.CALIPSO_cirrus.append(cirrus_gridded)
+                    self.CALIPSO_cirrus.append(cirrus_gridded)
                     #self.cirrus_od.append(self.opt_depth)
                     #self.CALIPSO_temp.append(temp_gridded)
                     #self.CALIPSO_count.append(cirrus_count)
-                    #self.dates.append(binned_datetime.date())
-                    #self.times.append(binned_datetime.time())
+                    self.dates.append(binned_datetime.date())
+                    self.times.append(binned_datetime.time())
                     
                     start_time_window = start_time_window + timedelta(minutes = self.time_res)
                     end_time_window = start_time_window + timedelta(minutes = self.time_res)
@@ -336,7 +349,7 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(lidar_path + 'LIDAR_03_15
             except:
                 pass
         
-        #self.CALIPSO_cirrus = np.stack(self.CALIPSO_cirrus)
+        self.CALIPSO_cirrus = np.stack(self.CALIPSO_cirrus)
         #self.CALIPSO_temp = np.stack(self.CALIPSO_temp)
         #self.cirrus_od = np.stack(self.cirrus_od)
         
@@ -433,6 +446,37 @@ class CALIPSO_analysis: # e.g. test = CALIPSO_analysis(lidar_path + 'LIDAR_03_15
             writer = Writer(fps=2, metadata=dict(artist='Me'), bitrate=1800, extra_args=['-vcodec', 'libx264'])
             myAnimation.save('CALIPSO.mp4', writer=writer)
 
+
+# lon_pos = []
+# lat_pos = []
+# alldates = []
+# alltimes = []
+
+# for month in months_complete:
+#     calipso = CALIPSO_analysis(month, 15, False)
+#     lon_pos.append(calipso.lon_pos)
+#     lat_pos.append(calipso.lat_pos)
+#     alldates.append(calipso.dates)
+#     alltimes.append(calipso.times)
+
+# #%%
+# lon_pos_nw = [np.concatenate(ps, axis = 0) for ps in lon_pos]
+# lon_pos_nw = np.concatenate(lon_pos_nw, axis = 0)
+# #%%
+# lat_pos_nw = [np.concatenate(ps, axis = 0) for ps in lat_pos]
+# lat_pos_nw = np.concatenate(lat_pos_nw, axis = 0)
+# pos_arr = np.column_stack([lon_pos_nw, lat_pos_nw])
+# pos_df = pd.DataFrame(pos_arr, columns = ['longitude', 'latitude'])
+# sns.jointplot(x = 'longitude', y = 'latitude', data = pos_df,
+#               kind = 'hex', xlim = [min_lon, max_lon],
+#               ylim = [min_lat, max_lat])
+# plt.show()
+
+# #%%
+# all_dates = np.concatenate(alldates, axis = 0)
+# all_times = np.concatenate(alltimes, axis = 0)
+
+# miscellaneous.time_map(all_dates, all_times)
 #%%
 
 '''
