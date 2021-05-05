@@ -1,7 +1,5 @@
 # -*- coding: utf-8 -*-
 """
-Created on Thu Apr  8 13:49:08 2021
-
 @author: fafri
 """
 '''
@@ -9,7 +7,7 @@ Created on Thu Apr  8 13:49:08 2021
 '''
 
 from netCDF4 import Dataset
-from datetime import datetime
+import datetime
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -17,9 +15,125 @@ import math as m
 from scipy import stats
 import re
 import random
+import urllib
+import fnmatch
+import lxml.html
+import time 
+import cdsapi
 
 '''
--------------------------------CLASS-------------------------------------------
+---------------------------PLOTTING PREFERENCES--------------------------------
+'''
+
+plt.style.use('seaborn-darkgrid')
+plt.rc('text', usetex=False)
+plt.rc('font', family='times')
+plt.rc('xtick', labelsize=20) 
+plt.rc('ytick', labelsize=20) 
+plt.rc('font', size=20) 
+plt.rc('figure', figsize = (12, 5))
+
+'''
+--------------------------------PARAMS-----------------------------------------
+'''
+
+res_lon = 0.25 # set desired resolution in longitudinal direction in degs
+res_lat = 0.25 # set desired resolution in latitudinal direction in degs
+min_lon = -10 # research area min longitude
+max_lon = 40 # research area max longitude
+min_lat = 35 # research area min latitude
+max_lat = 60 # research area max latitude
+months_complete = ['03_15', '06_15', '09_15', '12_15', '03_16', '06_16', '09_16', '12_16',
+                   '03_17', '06_17', '09_17', '12_17', '03_18', '06_18', '09_18', '12_18',
+                   '03_19', '06_19', '09_19', '12_19', '03_20', '06_20', '09_20', '12_20']
+months_1518 = months_complete[:16] # months till 2018
+months_1920 = months_complete[16:] # months 2019 & 2020
+dates = [month.replace('_', '-') for month in months_complete]
+years = ['2015', '2016', '2017', '2018', '2019', '2020'] # years
+
+'''
+---------------------------------PATHS-----------------------------------------
+'''
+
+flight_path = 'E:\\Research_cirrus\\Flight_data\\'
+lidar_path = 'E:\\Research_cirrus\\CALIPSO_data\\'
+meteo_path = 'E:\\Research_cirrus\\ERA5_data\\'
+meteosat_path = 'E:\\Research_cirrus\\Meteosat_CLAAS_data\\'
+
+#%%
+'''
+---------------EXTRACT ERA5 REANALYSIS PRESSURE LEVEL DATA---------------------
+'''
+
+class ERA5_reanalysis:
+    
+    '''
+        Parameters
+        ----------
+        month : month, str
+        year : year, str
+        pres_lvls : pressure levels, list of str ended with a comma
+        savename : name new file, list of str
+        
+        Returns
+        -------
+        API requested meteo data, RH and temp
+    '''
+    
+    def __init__(self, month, year, pres_lvls, savename):
+        self.month = month
+        self.year = year
+        self.pres_lvls = pres_lvls
+        self.savename = savename
+        self.api_req()
+        
+    def api_req(self):
+        c = cdsapi.Client()
+    
+        c.retrieve(
+        'reanalysis-era5-pressure-levels',
+        {
+            'product_type': 'reanalysis',
+            'format': 'netcdf',
+            'variable': [
+                'relative_humidity', 'temperature',
+            ],
+            'pressure_level': self.pres_lvls,
+            'year': self.year,
+            'month': self.month,
+            'day': [
+                '01', '02', '03',
+                '04', '05', '06',
+                '07', '08', '09',
+                '10', '11', '12',
+                '13', '14', '15',
+                '16', '17', '18',
+                '19', '20', '21',
+                '22', '23', '24',
+                '25', '26', '27',
+                '28', '29', '30',
+                '31',
+            ],
+            'time': [
+                '00:00', '01:00', '02:00',
+                '03:00', '04:00', '05:00',
+                '06:00', '07:00', '08:00',
+                '09:00', '10:00', '11:00',
+                '12:00', '13:00', '14:00',
+                '15:00', '16:00', '17:00',
+                '18:00', '19:00', '20:00',
+                '21:00', '22:00', '23:00',
+            ],
+            'area': [
+                max_lat, min_lon, min_lat,
+                max_lon,
+            ],
+        },
+        '{0}.nc'.format(self.savename))
+
+#%%
+'''
+---------------------------HANDY FUNCTIONS-------------------------------------
 '''
 
 class miscellaneous:
@@ -44,6 +158,9 @@ class miscellaneous:
     
     def duplicates(lst, item):
             return [i for i, x in enumerate(lst) if x == item]
+        
+    def piecewise_linear(x, x0, y0, k1, k2):
+        return np.piecewise(x, [x < x0], [lambda x:k1*x + y0-k1*x0, lambda x:k2*x + y0-k2*x0])
     
     def remove_chars(row):
         try:
@@ -51,6 +168,20 @@ class miscellaneous:
         except:
             row = row
         return row
+    
+    def alt(h_b, P_ref, T_ref, P):
+                
+        M = 0.0289644 # molar mass Earths air in kg/mol
+        R = 8.3144598 # universal gas constant in J/(mol K)
+        g_0 = 9.80665 # gravitational constant
+        
+        return (R * T_ref / (g_0 * M) * np.log(P_ref / P) + h_b) / 1e3
+    
+    def coeff_linregr(data, x, Neff):
+        slope, intercept, r_value, p_value, std_err = stats.linregress(x,data)
+        t = r_value*np.sqrt(Neff - 2)/np.sqrt(1 - r_value**2) #compute t for t test
+        p_val = stats.t.sf(np.abs(t), Neff-1) * 2 #compute p value from t and dimensions
+        return slope, std_err, p_val
     
     def hour_rounder(t):
             # Rounds to nearest hour by adding a timedelta hour if minute >= 30
@@ -61,7 +192,11 @@ class miscellaneous:
             # Rounds to nearest hour by adding a timedelta hour if minute >= 30
             return t.replace(second=0, microsecond=0, minute=0,
                               hour=t.hour) + datetime.timedelta(minutes=round(t.minute / 15) * 15)
-        
+    
+    def convert_seconds(n): 
+        timestr = time.strftime('%H:%M:%S', time.gmtime(n))
+        return datetime.datetime.strptime(timestr, '%H:%M:%S').time()
+    
     def flatten_clean(array):
         reshaped = np.reshape(array, -1)
         return reshaped[~(np.isnan(reshaped))]
@@ -75,13 +210,40 @@ class miscellaneous:
             else:
                 my_dict[key] = data[key][:, :, :, :]
         return my_dict
+
+    
+    def url_list(url):
+        urls = []
+        connection = urllib.request.urlopen(url)
+        dom =  lxml.html.fromstring(connection.read())
+        for link in dom.xpath('//a/@href'):
+            urls.append(link)
+        return urls
+    
+    def gen_dirlist(self, dirlist, savename):
+        # wget --load-cookies {path}.urs_cookies --save-cookies {path}.urs_cookies --auth-no-challenge=on --keep-session-cookies --user={username} --ask-password --header "Authorization: Bearer {token}" --content-disposition -i {path}\{savename}.dat -P {path}
+        for idx in range(len(dirlist)):
+            
+            urls = self.url_list(dirlist[idx])
+            
+            filetype = "*.hdf"
+            file_list = [filename for filename in fnmatch.filter(urls, filetype)]
+                
+            with open('{0}.dat'.format(savename), 'a') as text_file:
+                for file in file_list:
+                    name = '{0}{1}'.format(dirlist[idx], file)
+                    text_file.write(name + '\n')
     
     def multidim_slice(ind_arr, arr):
         output_arr = np.zeros((np.shape(arr)[1], np.shape(arr)[2]))
         for row in range(len(ind_arr)):
             for col in range(len(ind_arr[row])):
                 ind = ind_arr[row, col]
-                output_arr[row, col] = arr[ind, row, col]
+                if np.isnan(ind) == True:
+                    output_arr[row, col] = np.mean(arr[:, row, col])
+                else:
+                    ind = int(ind - 1)
+                    output_arr[row, col] = arr[ind, row, col]
         return output_arr
     
     def pivot_array(arr, dates):
@@ -110,6 +272,15 @@ class miscellaneous:
         
         return np.sqrt(d_lon**2 + d_lat**2)
     
+    def bin_1D(x_list, var, stat):
+        bins_pressureL = stats.binned_statistic(np.array(x_list).flatten(),
+                                     np.array(var).flatten(),
+                                     statistic = stat,
+                                     bins = int(len(x_list) - 1),
+                                     range = [min(x_list), max(x_list)]) # pressure levels in upper troposphere include 100-400 in steps of 50hPa (see SPACE_import)
+    
+        return bins_pressureL.statistic
+    
     def bin_2d(x_list, y_list, z_list, min_x, max_x, min_y, max_y, res_x, res_y, stat):
         grid = stats.binned_statistic_2d(np.array(x_list).flatten(),
                                                  np.array(y_list).flatten(),
@@ -119,40 +290,5 @@ class miscellaneous:
                                                  range = [[min_x, max_x], [min_y, max_y]])
         
         return grid.statistic
-
-    def time_map(dates, times):
-
-        # get all overpass times over Europe of CALIPSO
-        overpass_time = [datetime.combine(date, time) for date, time in zip(dates, times)]
-        overpass_time = pd.DataFrame(overpass_time, columns = ['hour of the day'])
-        
-        # create a frequency list of overpass times rounded down to hours 
-        freqlist = overpass_time.groupby(overpass_time["hour of the day"].dt.hour).count()
-        freqlist.columns = ['freq']
-        
-        # create df of all hours in a day (0-23), all zeros
-        overpass_freq = pd.DataFrame(np.zeros((24,)), columns = ['freq'])
-        
-        # replace the non-zero freqs using freqlist
-        overpass_freq.loc[overpass_freq.index.isin(freqlist.index), ['freq']] = freqlist[['freq']]
-        overpass_freq.columns = ["nr of CALIPSO overpasses during March '15"]
-        
-        plt.figure(figsize = (10, 6))
-        ax = plt.subplot(111, polar=True)
-        print(overpass_freq)
-        ax.bar((overpass_freq.index / 24 + 1 / 48 ) * 2 * m.pi, 
-               overpass_freq["nr of CALIPSO overpasses during March '15"], 
-               width = 0.2, alpha = 0.5, color = "green")
-        
-        ax.xaxis.set_tick_params(labelsize=16)
-        ax.yaxis.set_tick_params(labelsize=14)
-        ax.set_theta_zero_location("N")
-        ax.set_theta_direction(-1)
-        ax.set_xticks(np.arange(0, 2 * m.pi + 2 / 24 * m.pi, 2 / 24 * m.pi))
-        ax.set_yticks(np.arange(0, 550, 100))
-        ax.set_rlabel_position(83.5)
-        #ax.set_title("Overpass frequency of CALIPSO over Europe during Mar, Jun,\n Sep & Dec from 2015 till 2020")
-        ticks = [f"{i}:00" for i in range(0, 24, 1)]
-        ax.set_xticklabels(ticks)
         
     
